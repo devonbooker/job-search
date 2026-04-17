@@ -57,7 +57,7 @@ export class Orchestrator extends BaseAgent {
         return
       }
 
-      if (Array.isArray(p.targetTitles) && typeof p.selectedTopic !== 'string') {
+      if (Array.isArray(p.targetTitles) && !('selectedTopic' in p)) {
         const payload = p as unknown as ApproveResumePayload
         const session = this.sessions.get(payload.sessionId)
         if (!session) return
@@ -104,9 +104,13 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.research = result
           session.stage = 'building_resume'
+          if (!session.profile) {
+            console.error(`[ORCHESTRATOR] no profile for session ${result.sessionId} at research stage`)
+            return
+          }
           this.send(AgentRole.RESUME_LEAD, MessageType.DISPATCH, {
             sessionId: result.sessionId,
-            profile: session.profile!,
+            profile: session.profile,
             jobTitles: result.jobTitles,
             skillsByTitle: result.skillsByTitle,
             targetTitles: result.jobTitles.map(j => j.title),
@@ -132,9 +136,11 @@ export class Orchestrator extends BaseAgent {
           const result = message.payload as InterviewResultPayload
           const session = this.sessions.get(result.sessionId)
           if (!session) return
-          session.stage = 'awaiting_resume_approval'
+          session.stage = 'interview_prep'
           break
         }
+        default:
+          console.warn(`[ORCHESTRATOR] unexpected RESULT from ${message.from_agent}, ignoring`)
       }
     }
   }

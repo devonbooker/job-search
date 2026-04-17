@@ -9,6 +9,7 @@ import {
   type IntakeResultPayload,
   type ResearchResultPayload,
   type ApproveResumePayload,
+  type StartInterviewPayload,
 } from '../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
 
@@ -129,6 +130,33 @@ describe('Orchestrator', () => {
     await runPromise
 
     const msg = queue.receive(AgentRole.JOB_SEARCH_LEAD)
+    expect(msg).not.toBeNull()
+    expect(msg!.from_agent).toBe(AgentRole.ORCHESTRATOR)
+  })
+
+  test('routes start-interview dispatch to InterviewPrepLead', async () => {
+    // Seed session first
+    queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
+      sessionId: 'ses-5',
+      goals: 'security',
+      experience: '3 years',
+      preferences: 'remote',
+    } satisfies IntakeDispatchPayload)
+
+    const runPromise = orchestrator.run()
+    await Bun.sleep(150)
+
+    queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
+      sessionId: 'ses-5',
+      resumeSections: [{ title: 'Skills', content: [{ text: 'AWS' }] }],
+      selectedTopic: 'AWS',
+    } satisfies StartInterviewPayload)
+
+    await Bun.sleep(200)
+    await orchestrator.stop()
+    await runPromise
+
+    const msg = queue.receive(AgentRole.INTERVIEW_PREP_LEAD)
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.ORCHESTRATOR)
   })
