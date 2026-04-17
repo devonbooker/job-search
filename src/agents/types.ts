@@ -66,16 +66,16 @@ export interface InterviewFeedback {
 }
 
 // Dispatch payloads (Orchestrator -> Lead, Lead -> Sub)
-export interface DispatchIntakePayload {
+export interface IntakeDispatchPayload {
   sessionId: string
 }
 
-export interface DispatchResearchPayload {
+export interface ResearchDispatchPayload {
   sessionId: string
   profile: UserProfile
 }
 
-export interface DispatchResumePayload {
+export interface ResumeDispatchPayload {
   sessionId: string
   profile: UserProfile
   jobTitles: JobTitleResult[]
@@ -83,12 +83,12 @@ export interface DispatchResumePayload {
   targetTitles: string[]
 }
 
-export interface DispatchJobSearchPayload {
+export interface JobSearchDispatchPayload {
   sessionId: string
   targetTitles: string[]
 }
 
-export interface DispatchInterviewPayload {
+export interface InterviewDispatchPayload {
   sessionId: string
   resumeSections: ResumeSection[]
   selectedTopic: string

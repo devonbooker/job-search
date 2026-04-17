@@ -426,16 +426,16 @@ export interface InterviewFeedback {
 }
 
 // Dispatch payloads (Orchestrator -> Lead, Lead -> Sub)
-export interface DispatchIntakePayload {
+export interface IntakeDispatchPayload {
   sessionId: string
 }
 
-export interface DispatchResearchPayload {
+export interface ResearchDispatchPayload {
   sessionId: string
   profile: UserProfile
 }
 
-export interface DispatchResumePayload {
+export interface ResumeDispatchPayload {
   sessionId: string
   profile: UserProfile
   jobTitles: JobTitleResult[]
@@ -443,12 +443,12 @@ export interface DispatchResumePayload {
   targetTitles: string[]
 }
 
-export interface DispatchJobSearchPayload {
+export interface JobSearchDispatchPayload {
   sessionId: string
   targetTitles: string[]
 }
 
-export interface DispatchInterviewPayload {
+export interface InterviewDispatchPayload {
   sessionId: string
   resumeSections: ResumeSection[]
   selectedTopic: string
@@ -615,6 +615,11 @@ export class MessageQueue {
         acked_at INTEGER
       )
     `)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_messages_to_unacked
+      ON messages (to_agent, created_at)
+      WHERE acked_at IS NULL
+    `)
   }
 
   send(from: AgentRole, to: AgentRole, type: MessageType, payload: unknown): void {
@@ -761,6 +766,26 @@ describe('BaseAgent', () => {
     agent.stop()
     await expect(runPromise).resolves.toBeUndefined()
   })
+
+  test('run does not ack message if handleMessage throws', async () => {
+    class ThrowingAgent extends BaseAgent {
+      readonly role = AgentRole.RESEARCH_LEAD
+      readonly model = 'claude-sonnet-4-6'
+      async handleMessage(): Promise<void> {
+        throw new Error('boom')
+      }
+    }
+    const throwing = new ThrowingAgent(queue, anthropic)
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, { sessionId: 'z' })
+
+    const runPromise = throwing.run()
+    await Bun.sleep(300)
+    throwing.stop()
+    await runPromise
+
+    const stillThere = queue.receive(AgentRole.RESEARCH_LEAD)
+    expect(stillThere).not.toBeNull()
+  })
 })
 ```
 
@@ -804,8 +829,13 @@ export abstract class BaseAgent {
     while (this.running) {
       const message = this.queue.receive(this.role)
       if (message) {
-        this.queue.ack(message.id)
-        await this.handleMessage(message)
+        try {
+          await this.handleMessage(message)
+          this.queue.ack(message.id)
+        } catch (err) {
+          // Message remains unacked for retry on next poll
+          console.error(`[${this.role}] handleMessage error:`, err)
+        }
       } else {
         await Bun.sleep(this.pollIntervalMs)
       }
