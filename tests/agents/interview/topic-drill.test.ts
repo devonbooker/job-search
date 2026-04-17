@@ -123,5 +123,10 @@ describe('TopicDrill', () => {
 
     expect(capturedPrompt).toContain('evaluate')
     expect(capturedPrompt).toContain('I managed a 50-node cluster')
+
+    const result = queue.receive(AgentRole.INTERVIEW_PREP_LEAD)
+    expect(result).not.toBeNull()
+    expect(result!.from_agent).toBe(AgentRole.TOPIC_DRILL)
+    expect(result!.type).toBe(MessageType.RESULT)
   })
 })

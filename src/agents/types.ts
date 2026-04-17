@@ -118,6 +118,7 @@ export interface InterviewDispatchPayload {
   resumeSections: ResumeSection[]
   selectedTopic: string
   userAnswer?: string
+  question?: string
 }
 
 // --- Sub-agent dispatch payloads (Lead -> Sub) ---
@@ -159,6 +160,7 @@ export interface TopicDrillDispatchPayload {
   resumeSections: ResumeSection[]
   selectedTopic: string
   userAnswer?: string
+  question?: string
 }
 
 // --- Result payloads (Lead -> ORCHESTRATOR, Sub -> Lead) ---

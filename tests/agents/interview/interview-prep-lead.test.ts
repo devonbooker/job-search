@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import Anthropic from '@anthropic-ai/sdk'
+import type Anthropic from '@anthropic-ai/sdk'
 import { InterviewPrepLead } from '../../../src/agents/interview/interview-prep-lead'
 import { MessageQueue } from '../../../src/agents/queue'
 import {
@@ -18,7 +18,7 @@ describe('InterviewPrepLead', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new InterviewPrepLead(queue, new Anthropic({ apiKey: 'test-key' }))
+    agent = new InterviewPrepLead(queue, {} as unknown as Anthropic)
   })
 
   afterEach(async () => {

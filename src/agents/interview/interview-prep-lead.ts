@@ -28,6 +28,7 @@ export class InterviewPrepLead extends BaseAgent {
         resumeSections: dispatch.resumeSections,
         selectedTopic: dispatch.selectedTopic,
         userAnswer: dispatch.userAnswer,
+        question: dispatch.question,
       } satisfies TopicDrillDispatchPayload)
       return
     }

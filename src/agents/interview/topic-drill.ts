@@ -57,7 +57,7 @@ export class TopicDrill extends BaseAgent {
       userContent = [
         `Resume context:\n${resumeContext}`,
         `Topic: ${dispatch.selectedTopic}`,
-        `Question: (previously generated for this topic)`,
+        `Question: ${dispatch.question ?? '(not provided)'}`,
         `User's answer: ${dispatch.userAnswer}`,
         `evaluate the answer for clarity and specificity`,
       ].join('\n\n')
@@ -78,7 +78,12 @@ export class TopicDrill extends BaseAgent {
     })
 
     const text = response.content.find(b => b.type === 'text')?.text ?? ''
-    const feedback = JSON.parse(text) as InterviewFeedback
+    let feedback: InterviewFeedback
+    try {
+      feedback = JSON.parse(text) as InterviewFeedback
+    } catch {
+      throw new Error(`TopicDrill: Claude returned invalid JSON: ${text.slice(0, 100)}`)
+    }
 
     this.send(AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,
