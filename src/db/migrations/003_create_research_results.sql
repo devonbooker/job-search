@@ -1,0 +1,7 @@
+CREATE TABLE IF NOT EXISTS research_results (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  job_titles JSONB NOT NULL DEFAULT '[]',
+  skills_by_title JSONB NOT NULL DEFAULT '{}'
+);
