@@ -29,8 +29,15 @@ export async function runMigrations(): Promise<void> {
       )
       if (rows.length === 0) {
         const sql = await readFile(join(migrationsDir, file), 'utf-8')
-        await client.query(sql)
-        await client.query('INSERT INTO migrations (filename) VALUES ($1)', [file])
+        await client.query('BEGIN')
+        try {
+          await client.query(sql)
+          await client.query('INSERT INTO migrations (filename) VALUES ($1)', [file])
+          await client.query('COMMIT')
+        } catch (err) {
+          await client.query('ROLLBACK')
+          throw err
+        }
       }
     }
   } finally {
