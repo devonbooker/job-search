@@ -9,6 +9,7 @@ export abstract class BaseAgent {
   protected queue: MessageQueue
   protected anthropic: Anthropic
   private running = false
+  private runPromise: Promise<void> | null = null
   private readonly pollIntervalMs = 100
 
   constructor(queue: MessageQueue, anthropic: Anthropic) {
@@ -23,15 +24,35 @@ export abstract class BaseAgent {
   }
 
   async run(): Promise<void> {
+    if (this.running) {
+      throw new Error(`[${this.role}] run() called while already running`)
+    }
     this.running = true
+    this.runPromise = this.loop()
+    try {
+      await this.runPromise
+    } finally {
+      this.running = false
+      this.runPromise = null
+    }
+  }
+
+  private async loop(): Promise<void> {
     while (this.running) {
-      const message = this.queue.receive(this.role)
+      let message: Message | null = null
+      try {
+        message = this.queue.receive(this.role)
+      } catch (err) {
+        console.error(`[${this.role}] queue.receive error:`, err)
+        await Bun.sleep(this.pollIntervalMs)
+        continue
+      }
+
       if (message) {
         try {
           await this.handleMessage(message)
           this.queue.ack(message.id)
         } catch (err) {
-          // Message remains unacked for retry on next poll
           console.error(`[${this.role}] handleMessage error:`, err)
           await Bun.sleep(this.pollIntervalMs)
         }
@@ -41,7 +62,10 @@ export abstract class BaseAgent {
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false
+    if (this.runPromise) {
+      await this.runPromise
+    }
   }
 }

@@ -717,8 +717,8 @@ describe('BaseAgent', () => {
     agent = new TestAgent(queue, anthropic)
   })
 
-  afterEach(() => {
-    agent.stop()
+  afterEach(async () => {
+    await agent.stop()
     queue.close()
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
   })
@@ -742,7 +742,7 @@ describe('BaseAgent', () => {
 
     const runPromise = agent.run()
     await Bun.sleep(200)
-    agent.stop()
+    await agent.stop()
     await runPromise
 
     expect(agent.receivedMessages.length).toBe(1)
@@ -754,7 +754,7 @@ describe('BaseAgent', () => {
 
     const runPromise = agent.run()
     await Bun.sleep(200)
-    agent.stop()
+    await agent.stop()
     await runPromise
 
     const unacked = queue.receive(AgentRole.INTAKE_LEAD)
@@ -763,15 +763,24 @@ describe('BaseAgent', () => {
 
   test('stop halts the run loop', async () => {
     const runPromise = agent.run()
-    agent.stop()
+    await agent.stop()
     await expect(runPromise).resolves.toBeUndefined()
   })
 
-  test('run does not ack message if handleMessage throws', async () => {
+  test('run throws if called while already running', async () => {
+    const runPromise = agent.run()
+    await expect(agent.run()).rejects.toThrow(/already running/)
+    await agent.stop()
+    await runPromise
+  })
+
+  test('run does not ack message if handleMessage throws, and retries it', async () => {
+    let callCount = 0
     class ThrowingAgent extends BaseAgent {
       readonly role = AgentRole.RESEARCH_LEAD
       readonly model = 'claude-sonnet-4-6'
       async handleMessage(): Promise<void> {
+        callCount++
         throw new Error('boom')
       }
     }
@@ -779,10 +788,11 @@ describe('BaseAgent', () => {
     queue.send(AgentRole.ORCHESTRATOR, AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, { sessionId: 'z' })
 
     const runPromise = throwing.run()
-    await Bun.sleep(300)
-    throwing.stop()
+    await Bun.sleep(350)
+    await throwing.stop()
     await runPromise
 
+    expect(callCount).toBeGreaterThanOrEqual(2)
     const stillThere = queue.receive(AgentRole.RESEARCH_LEAD)
     expect(stillThere).not.toBeNull()
   })
@@ -811,6 +821,7 @@ export abstract class BaseAgent {
   protected queue: MessageQueue
   protected anthropic: Anthropic
   private running = false
+  private runPromise: Promise<void> | null = null
   private readonly pollIntervalMs = 100
 
   constructor(queue: MessageQueue, anthropic: Anthropic) {
@@ -825,16 +836,37 @@ export abstract class BaseAgent {
   }
 
   async run(): Promise<void> {
+    if (this.running) {
+      throw new Error(`[${this.role}] run() called while already running`)
+    }
     this.running = true
+    this.runPromise = this.loop()
+    try {
+      await this.runPromise
+    } finally {
+      this.running = false
+      this.runPromise = null
+    }
+  }
+
+  private async loop(): Promise<void> {
     while (this.running) {
-      const message = this.queue.receive(this.role)
+      let message: Message | null = null
+      try {
+        message = this.queue.receive(this.role)
+      } catch (err) {
+        console.error(`[${this.role}] queue.receive error:`, err)
+        await Bun.sleep(this.pollIntervalMs)
+        continue
+      }
+
       if (message) {
         try {
           await this.handleMessage(message)
           this.queue.ack(message.id)
         } catch (err) {
-          // Message remains unacked for retry on next poll
           console.error(`[${this.role}] handleMessage error:`, err)
+          await Bun.sleep(this.pollIntervalMs)
         }
       } else {
         await Bun.sleep(this.pollIntervalMs)
@@ -842,8 +874,11 @@ export abstract class BaseAgent {
     }
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     this.running = false
+    if (this.runPromise) {
+      await this.runPromise
+    }
   }
 }
 ```
@@ -854,7 +889,7 @@ export abstract class BaseAgent {
 bun test tests/agents/base.test.ts
 ```
 
-Expected: all 5 tests PASS.
+Expected: all 7 tests PASS.
 
 - [ ] **Step 5: Run full test suite**
 
