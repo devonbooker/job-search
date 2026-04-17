@@ -11,6 +11,7 @@ export enum AgentRole {
   ADZUNA_SEARCH = 'ADZUNA_SEARCH',
   INTERVIEW_PREP_LEAD = 'INTERVIEW_PREP_LEAD',
   TOPIC_DRILL = 'TOPIC_DRILL',
+  HTTP_API = 'HTTP_API',
 }
 
 export enum MessageType {
@@ -29,6 +30,8 @@ export interface Message {
   created_at: number
   acked_at: number | null
 }
+
+// --- Domain types ---
 
 export interface UserProfile {
   goals: string
@@ -65,10 +68,32 @@ export interface InterviewFeedback {
   specificity: 'strong' | 'adequate' | 'weak'
 }
 
-// Dispatch payloads (Orchestrator -> Lead, Lead -> Sub)
+// --- Orchestrator-level dispatch payloads (HTTP_API -> ORCHESTRATOR) ---
+
+// Starts the intake workflow
 export interface IntakeDispatchPayload {
   sessionId: string
+  goals: string
+  experience: string
+  preferences: string
+  resumeRaw?: string
 }
+
+// Sent after user approves resume in UI; triggers job search
+export interface ApproveResumePayload {
+  sessionId: string
+  targetTitles: string[]
+}
+
+// Sent from UI to start an interview prep session
+export interface StartInterviewPayload {
+  sessionId: string
+  resumeSections: ResumeSection[]
+  selectedTopic: string
+  userAnswer?: string
+}
+
+// --- Lead-level dispatch payloads (ORCHESTRATOR -> Lead) ---
 
 export interface ResearchDispatchPayload {
   sessionId: string
@@ -95,8 +120,55 @@ export interface InterviewDispatchPayload {
   userAnswer?: string
 }
 
-// Result payloads (Lead -> Orchestrator, Sub -> Lead)
+// --- Sub-agent dispatch payloads (Lead -> Sub) ---
+
+export interface ProfileBuilderDispatchPayload {
+  sessionId: string
+  goals: string
+  experience: string
+  preferences: string
+  resumeRaw?: string
+}
+
+export interface JobTitleResearchDispatchPayload {
+  sessionId: string
+  profile: UserProfile
+}
+
+export interface SkillsMarketResearchDispatchPayload {
+  sessionId: string
+  profile: UserProfile
+  jobTitles: JobTitleResult[]
+}
+
+export interface ResumeBuildDispatchPayload {
+  sessionId: string
+  profile: UserProfile
+  jobTitles: JobTitleResult[]
+  skillsByTitle: SkillsResult[]
+  targetTitles: string[]
+}
+
+export interface AdzunaSearchDispatchPayload {
+  sessionId: string
+  targetTitles: string[]
+}
+
+export interface TopicDrillDispatchPayload {
+  sessionId: string
+  resumeSections: ResumeSection[]
+  selectedTopic: string
+  userAnswer?: string
+}
+
+// --- Result payloads (Lead -> ORCHESTRATOR, Sub -> Lead) ---
+
 export interface IntakeResultPayload {
+  sessionId: string
+  profile: UserProfile
+}
+
+export interface ProfileBuilderResultPayload {
   sessionId: string
   profile: UserProfile
 }
@@ -107,7 +179,22 @@ export interface ResearchResultPayload {
   skillsByTitle: SkillsResult[]
 }
 
+export interface JobTitleResearchResultPayload {
+  sessionId: string
+  jobTitles: JobTitleResult[]
+}
+
+export interface SkillsMarketResearchResultPayload {
+  sessionId: string
+  skillsByTitle: SkillsResult[]
+}
+
 export interface ResumeResultPayload {
+  sessionId: string
+  sections: ResumeSection[]
+}
+
+export interface ResumeBuildResultPayload {
   sessionId: string
   sections: ResumeSection[]
 }
@@ -117,7 +204,17 @@ export interface JobSearchResultPayload {
   jobsFound: number
 }
 
+export interface AdzunaSearchResultPayload {
+  sessionId: string
+  jobsFound: number
+}
+
 export interface InterviewResultPayload {
+  sessionId: string
+  feedback: InterviewFeedback
+}
+
+export interface TopicDrillResultPayload {
   sessionId: string
   feedback: InterviewFeedback
 }
