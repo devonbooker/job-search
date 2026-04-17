@@ -10,11 +10,12 @@ export abstract class BaseAgent {
   protected anthropic: Anthropic
   private running = false
   private runPromise: Promise<void> | null = null
-  private readonly pollIntervalMs = 100
+  protected readonly pollIntervalMs: number
 
-  constructor(queue: MessageQueue, anthropic: Anthropic) {
+  constructor(queue: MessageQueue, anthropic: Anthropic, pollIntervalMs = 100) {
     this.queue = queue
     this.anthropic = anthropic
+    this.pollIntervalMs = pollIntervalMs
   }
 
   abstract handleMessage(message: Message): Promise<void>
