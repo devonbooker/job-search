@@ -27,15 +27,14 @@ export class JobSearchLead extends BaseAgent {
         sessionId: dispatch.sessionId,
         targetTitles: dispatch.targetTitles,
       } satisfies AdzunaSearchDispatchPayload)
-      return
-    }
-
-    if (message.type === MessageType.RESULT) {
+    } else if (message.type === MessageType.RESULT) {
       const result = message.payload as AdzunaSearchResultPayload
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
         sessionId: result.sessionId,
         jobsFound: result.jobsFound,
       } satisfies JobSearchResultPayload)
+    } else {
+      console.warn(`[JOB_SEARCH_LEAD] unexpected message type: ${message.type}`)
     }
   }
 }

@@ -30,6 +30,9 @@ export class AdzunaSearch extends BaseAgent {
     private readonly appKey: string = process.env.ADZUNA_APP_KEY ?? '',
   ) {
     super(queue, anthropic)
+    if (!this.appId || !this.appKey) {
+      throw new Error('ADZUNA_APP_ID and ADZUNA_APP_KEY must be set')
+    }
   }
 
   async handleMessage(message: Message): Promise<void> {
@@ -39,16 +42,24 @@ export class AdzunaSearch extends BaseAgent {
     const allJobs: AdzunaJob[] = []
 
     for (const title of dispatch.targetTitles) {
-      const query = encodeURIComponent(title)
-      const url = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=${this.appId}&app_key=${this.appKey}&what=${query}&results_per_page=50`
-      const response = await this.fetcher(url, {
-        headers: { Accept: 'application/json' },
-      })
-      if (!response.ok) {
-        throw new Error(`Adzuna API error: ${response.status}`)
+      try {
+        const query = encodeURIComponent(title)
+        const url = `https://api.adzuna.com/v1/api/jobs/us/search/1?app_id=${this.appId}&app_key=${this.appKey}&what=${query}&results_per_page=50`
+        const response = await this.fetcher(url, {
+          headers: { Accept: 'application/json' },
+        })
+        if (!response.ok) {
+          console.error(`[ADZUNA_SEARCH] HTTP ${response.status} for title "${title}"`)
+          continue
+        }
+        const data = await response.json() as { results?: AdzunaJob[] }
+        const valid = (data.results ?? []).filter(
+          j => j?.redirect_url && j?.title && j?.company?.display_name
+        )
+        allJobs.push(...valid)
+      } catch (err) {
+        console.error(`[ADZUNA_SEARCH] fetch error for title "${title}":`, err)
       }
-      const data = await response.json() as { results?: AdzunaJob[] }
-      allJobs.push(...(data.results ?? []))
     }
 
     const seen = new Set<string>()
@@ -60,7 +71,7 @@ export class AdzunaSearch extends BaseAgent {
 
     for (const job of unique) {
       await this.pool.query(
-        `INSERT INTO jobs (job_title, company, link, source) VALUES ($1, $2, $3, $4)`,
+        `INSERT INTO jobs (job_title, company, link, source) VALUES ($1, $2, $3, $4) ON CONFLICT (link) DO NOTHING`,
         [job.title, job.company.display_name, job.redirect_url, 'adzuna'],
       )
     }

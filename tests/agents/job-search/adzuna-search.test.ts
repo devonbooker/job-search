@@ -110,6 +110,22 @@ describe('AdzunaSearch', () => {
     expect(fetchCallCount).toBe(2)
   })
 
+  test('throws if appId or appKey is empty', () => {
+    const q = new MessageQueue(TEST_DB)
+    try {
+      expect(() => new AdzunaSearch(
+        q,
+        new Anthropic({ apiKey: 'test-key' }),
+        makePool(),
+        makeMockFetch([]),
+        '',
+        'some-key',
+      )).toThrow('ADZUNA_APP_ID and ADZUNA_APP_KEY must be set')
+    } finally {
+      q.close()
+    }
+  })
+
   test('deduplicates jobs by redirect_url before writing', async () => {
     const duplicateJobs = [
       { title: 'Security Engineer', company: { display_name: 'Acme' }, redirect_url: 'https://example.com/job/1' },
