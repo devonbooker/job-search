@@ -8,6 +8,7 @@ import {
   type ResumeDispatchPayload,
   type ResumeResultPayload,
   type ResumeBuildDispatchPayload,
+  type ResumeBuildResultPayload,
 } from '../types'
 import { OPUS_MODEL } from '../constants'
 
@@ -33,8 +34,11 @@ export class ResumeLead extends BaseAgent {
     }
 
     if (message.type === MessageType.RESULT) {
-      const result = message.payload as ResumeResultPayload
-      this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, result)
+      const result = message.payload as ResumeBuildResultPayload
+      this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
+        sessionId: result.sessionId,
+        sections: result.sections,
+      } satisfies ResumeResultPayload)
     }
   }
 }
