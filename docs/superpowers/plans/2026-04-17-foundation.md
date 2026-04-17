@@ -127,13 +127,13 @@ console.log('job-search agent system')
 bun install
 ```
 
-Expected: `node_modules/` created, `bun.lockb` created.
+Expected: `node_modules/` created, `bun.lock` created.
 
 - [ ] **Step 8: Commit**
 
 ```bash
 git init
-git add package.json tsconfig.json .gitignore .env.example src/index.ts bun.lockb
+git add package.json tsconfig.json .gitignore .env.example src/index.ts bun.lock
 git commit -m "feat: scaffold project"
 ```
 
