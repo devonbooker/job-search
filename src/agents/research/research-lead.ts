@@ -67,6 +67,7 @@ export class ResearchLead extends BaseAgent {
         const result = message.payload as SkillsMarketResearchResultPayload
         if (!session.jobTitles) {
           console.error(`[RESEARCH_LEAD] no jobTitles for session ${result.sessionId} at skills stage`)
+          this.sessions.delete(result.sessionId)
           return
         }
         this.sessions.delete(result.sessionId)
