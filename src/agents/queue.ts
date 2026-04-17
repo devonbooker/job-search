@@ -29,6 +29,11 @@ export class MessageQueue {
         acked_at INTEGER
       )
     `)
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_messages_to_unacked
+      ON messages (to_agent, created_at)
+      WHERE acked_at IS NULL
+    `)
   }
 
   send(from: AgentRole, to: AgentRole, type: MessageType, payload: unknown): void {
