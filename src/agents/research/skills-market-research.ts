@@ -36,7 +36,7 @@ export class SkillsMarketResearch extends BaseAgent {
     const snippetsByTitle: Record<string, string> = {}
 
     for (const jobTitle of dispatch.jobTitles) {
-      const query = encodeURIComponent(`required skills ${jobTitle.title} job posting 2024`)
+      const query = encodeURIComponent(`required skills ${jobTitle.title} job posting ${new Date().getFullYear()}`)
       const url = `https://api.search.brave.com/res/v1/web/search?q=${query}&count=10`
       const response = await this.fetcher(url, {
         headers: {
@@ -44,6 +44,9 @@ export class SkillsMarketResearch extends BaseAgent {
           'X-Subscription-Token': this.braveApiKey,
         },
       })
+      if (!response.ok) {
+        throw new Error(`Brave Search error: ${response.status}`)
+      }
       const data = await response.json() as { web?: { results?: { description?: string }[] } }
       snippetsByTitle[jobTitle.title] = data.web?.results?.map(r => r.description ?? '').join('\n') ?? ''
     }
@@ -65,7 +68,12 @@ export class SkillsMarketResearch extends BaseAgent {
     })
 
     const text = claudeResponse.content.find(b => b.type === 'text')?.text ?? ''
-    const skillsByTitle = JSON.parse(text) as SkillsResult[]
+    let skillsByTitle: SkillsResult[]
+    try {
+      skillsByTitle = JSON.parse(text) as SkillsResult[]
+    } catch {
+      throw new Error(`SkillsMarketResearch: Claude returned invalid JSON: ${text.slice(0, 100)}`)
+    }
 
     this.send(AgentRole.RESEARCH_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,

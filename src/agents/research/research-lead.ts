@@ -65,10 +65,14 @@ export class ResearchLead extends BaseAgent {
 
       if (session.stage === 'awaiting_skills') {
         const result = message.payload as SkillsMarketResearchResultPayload
+        if (!session.jobTitles) {
+          console.error(`[RESEARCH_LEAD] no jobTitles for session ${result.sessionId} at skills stage`)
+          return
+        }
         this.sessions.delete(result.sessionId)
         this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
           sessionId: result.sessionId,
-          jobTitles: session.jobTitles!,
+          jobTitles: session.jobTitles,
           skillsByTitle: result.skillsByTitle,
         } satisfies ResearchResultPayload)
       }
