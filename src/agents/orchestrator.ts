@@ -129,6 +129,7 @@ export class Orchestrator extends BaseAgent {
           const result = message.payload as JobSearchResultPayload
           const session = this.sessions.get(result.sessionId)
           if (!session) return
+          this.sessions.delete(result.sessionId)
           session.stage = 'idle'
           break
         }
@@ -136,6 +137,7 @@ export class Orchestrator extends BaseAgent {
           const result = message.payload as InterviewResultPayload
           const session = this.sessions.get(result.sessionId)
           if (!session) return
+          this.sessions.delete(result.sessionId)
           session.stage = 'interview_prep'
           break
         }

@@ -28,6 +28,7 @@ export class JobSearchLead extends BaseAgent {
         targetTitles: dispatch.targetTitles,
       } satisfies AdzunaSearchDispatchPayload)
     } else if (message.type === MessageType.RESULT) {
+      if (message.from_agent !== AgentRole.ADZUNA_SEARCH) return
       const result = message.payload as AdzunaSearchResultPayload
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
         sessionId: result.sessionId,

@@ -33,6 +33,7 @@ export class IntakeLead extends BaseAgent {
     }
 
     if (message.type === MessageType.RESULT) {
+      if (message.from_agent !== AgentRole.PROFILE_BUILDER) return
       const result = message.payload as IntakeResultPayload
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, result)
     }

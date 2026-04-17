@@ -34,6 +34,7 @@ export class InterviewPrepLead extends BaseAgent {
     }
 
     if (message.type === MessageType.RESULT) {
+      if (message.from_agent !== AgentRole.TOPIC_DRILL) return
       const result = message.payload as TopicDrillResultPayload
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
         sessionId: result.sessionId,

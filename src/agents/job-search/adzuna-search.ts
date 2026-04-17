@@ -40,6 +40,7 @@ export class AdzunaSearch extends BaseAgent {
 
     const dispatch = message.payload as AdzunaSearchDispatchPayload
     const allJobs: AdzunaJob[] = []
+    let successCount = 0
 
     for (const title of dispatch.targetTitles) {
       try {
@@ -57,9 +58,14 @@ export class AdzunaSearch extends BaseAgent {
           j => j?.redirect_url && j?.title && j?.company?.display_name
         )
         allJobs.push(...valid)
+        successCount++
       } catch (err) {
         console.error(`[ADZUNA_SEARCH] fetch error for title "${title}":`, err)
       }
+    }
+
+    if (successCount === 0 && dispatch.targetTitles.length > 0) {
+      throw new Error('[ADZUNA_SEARCH] all title fetches failed, will retry')
     }
 
     const seen = new Set<string>()

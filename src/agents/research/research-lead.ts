@@ -7,6 +7,7 @@ import {
   type Message,
   type ResearchDispatchPayload,
   type JobTitleResearchResultPayload,
+  type JobTitleResearchDispatchPayload,
   type SkillsMarketResearchResultPayload,
   type ResearchResultPayload,
   type UserProfile,
@@ -42,7 +43,7 @@ export class ResearchLead extends BaseAgent {
       this.send(AgentRole.JOB_TITLE_RESEARCH, MessageType.DISPATCH, {
         sessionId: dispatch.sessionId,
         profile: dispatch.profile,
-      })
+      } satisfies JobTitleResearchDispatchPayload)
       return
     }
 

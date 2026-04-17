@@ -34,6 +34,7 @@ export class ResumeLead extends BaseAgent {
     }
 
     if (message.type === MessageType.RESULT) {
+      if (message.from_agent !== AgentRole.RESUME_BUILDER) return
       const result = message.payload as ResumeBuildResultPayload
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
         sessionId: result.sessionId,
