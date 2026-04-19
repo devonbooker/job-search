@@ -6,7 +6,7 @@
     "dev": "bun run --watch src/main.ts",
     "dev:web": "vite",
     "build:web": "vite build",
-    "test": "bun test && vitest run",
+    "test": "bun test tests/agents tests/db tests/http tests/integration && vitest run",
     "test:web": "vitest run"
   },
   "dependencies": {
