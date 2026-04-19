@@ -160,4 +160,32 @@ describe('Orchestrator', () => {
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.ORCHESTRATOR)
   })
+
+  test('emits STATUS to HTTP_API when transitioning stages', async () => {
+    queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
+      sessionId: 'ses-status',
+      goals: 'g',
+      experience: 'e',
+      preferences: 'p',
+    } satisfies IntakeDispatchPayload)
+
+    const runPromise = orchestrator.run()
+    await Bun.sleep(200)
+    await orchestrator.stop()
+    await runPromise
+
+    // Drain all HTTP_API messages
+    const httpMsgs = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      httpMsgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+
+    expect(httpMsgs.some(
+      m => m.type === MessageType.STATUS &&
+           (m.payload as { stage: string }).stage === 'intake'
+    )).toBe(true)
+  })
 })

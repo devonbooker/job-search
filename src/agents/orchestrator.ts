@@ -18,6 +18,7 @@ import {
   type JobSearchDispatchPayload,
   type InterviewDispatchPayload,
   type UserProfile,
+  type ErrorPayload,
 } from './types'
 import { OPUS_MODEL } from './constants'
 import type { OrchestratorStage } from './events'
@@ -45,6 +46,7 @@ export class Orchestrator extends BaseAgent {
       if (typeof p.goals === 'string') {
         const payload = p as unknown as IntakeDispatchPayload
         this.sessions.set(payload.sessionId, { stage: 'intake' })
+        this.emitStatus(payload.sessionId, 'intake')
         this.send(AgentRole.INTAKE_LEAD, MessageType.DISPATCH, payload)
         return
       }
@@ -52,8 +54,12 @@ export class Orchestrator extends BaseAgent {
       if (Array.isArray(p.targetTitles) && !('selectedTopic' in p)) {
         const payload = p as unknown as ApproveResumePayload
         const session = this.sessions.get(payload.sessionId)
-        if (!session) return
+        if (!session) {
+          this.emitUnknownSessionError(payload.sessionId)
+          return
+        }
         session.stage = 'searching_jobs'
+        this.emitStatus(payload.sessionId, 'searching_jobs')
         this.send(AgentRole.JOB_SEARCH_LEAD, MessageType.DISPATCH, {
           sessionId: payload.sessionId,
           targetTitles: payload.targetTitles,
@@ -64,8 +70,12 @@ export class Orchestrator extends BaseAgent {
       if (typeof p.selectedTopic === 'string') {
         const payload = p as unknown as StartInterviewPayload
         const session = this.sessions.get(payload.sessionId)
-        if (!session) return
+        if (!session) {
+          this.emitUnknownSessionError(payload.sessionId)
+          return
+        }
         session.stage = 'interview_prep'
+        this.emitStatus(payload.sessionId, 'interview_prep')
         this.send(AgentRole.INTERVIEW_PREP_LEAD, MessageType.DISPATCH, {
           sessionId: payload.sessionId,
           resumeSections: payload.resumeSections,
@@ -84,6 +94,7 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.profile = result.profile
           session.stage = 'researching'
+          this.emitStatus(result.sessionId, 'researching')
           this.send(AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, {
             sessionId: result.sessionId,
             profile: result.profile,
@@ -96,8 +107,10 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.research = result
           session.stage = 'building_resume'
+          this.emitStatus(result.sessionId, 'building_resume')
+          this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
           if (!session.profile) {
-            console.error(`[ORCHESTRATOR] no profile for session ${result.sessionId} at research stage`)
+            console.error(`[ORCHESTRATOR] no profile for session ${result.sessionId}`)
             return
           }
           this.send(AgentRole.RESUME_LEAD, MessageType.DISPATCH, {
@@ -115,28 +128,50 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.resume = result
           session.stage = 'awaiting_resume_approval'
+          this.emitStatus(result.sessionId, 'awaiting_resume_approval')
+          this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
           break
         }
         case AgentRole.JOB_SEARCH_LEAD: {
           const result = message.payload as JobSearchResultPayload
           const session = this.sessions.get(result.sessionId)
           if (!session) return
-          this.sessions.delete(result.sessionId)
           session.stage = 'idle'
+          this.emitStatus(result.sessionId, 'idle')
+          this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
+          this.sessions.delete(result.sessionId)
           break
         }
         case AgentRole.INTERVIEW_PREP_LEAD: {
           const result = message.payload as InterviewResultPayload
           const session = this.sessions.get(result.sessionId)
           if (!session) return
-          this.sessions.delete(result.sessionId)
           session.stage = 'interview_prep'
+          this.emitStatus(result.sessionId, 'interview_prep')
+          this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
+          this.sessions.delete(result.sessionId)
           break
         }
         default:
-          console.warn(`[ORCHESTRATOR] unexpected RESULT from ${message.from_agent}, ignoring`)
+          console.warn(`[ORCHESTRATOR] unexpected RESULT from ${message.from_agent}`)
       }
     }
+  }
+
+  private emitStatus(sessionId: string, stage: OrchestratorStage): void {
+    this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+      sessionId,
+      stage,
+      agent: AgentRole.ORCHESTRATOR,
+    })
+  }
+
+  private emitUnknownSessionError(sessionId: string): void {
+    this.send(AgentRole.HTTP_API, MessageType.ERROR, {
+      sessionId,
+      agent: AgentRole.ORCHESTRATOR,
+      error: `Unknown session: ${sessionId}`,
+    } satisfies ErrorPayload)
   }
 
   getSessionState(sessionId: string): SessionState | undefined {
