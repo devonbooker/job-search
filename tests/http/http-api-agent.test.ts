@@ -128,3 +128,76 @@ describe('HttpApiAgent.handleMessage', () => {
     expect(agent.getSnapshot('s1')).toBeNull()
   })
 })
+
+describe('HttpApiAgent.startSession / sendCommand / subscribe', () => {
+  let queue: MessageQueue
+  let agent: HttpApiAgent
+
+  beforeEach(() => {
+    queue = new MessageQueue(TEST_DB)
+    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
+  })
+
+  afterEach(() => {
+    queue.close()
+    if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
+  })
+
+  test('startSession enqueues DISPATCH to ORCHESTRATOR with HTTP_API as from_agent', () => {
+    agent.startSession({
+      sessionId: 's1',
+      goals: 'g',
+      experience: 'e',
+      preferences: 'p',
+    })
+    const msg = queue.receive(AgentRole.ORCHESTRATOR)
+    expect(msg).not.toBeNull()
+    expect(msg!.from_agent).toBe(AgentRole.HTTP_API)
+    expect(msg!.type).toBe(MessageType.DISPATCH)
+    expect((msg!.payload as { goals: string }).goals).toBe('g')
+  })
+
+  test('sendCommand forwards arbitrary payload to ORCHESTRATOR', () => {
+    agent.sendCommand('s1', { sessionId: 's1', targetTitles: ['Security Engineer'] })
+    const msg = queue.receive(AgentRole.ORCHESTRATOR)
+    expect(msg).not.toBeNull()
+    expect((msg!.payload as { targetTitles: string[] }).targetTitles).toEqual(['Security Engineer'])
+  })
+
+  test('subscribe replays buffered events from lastEventId+1 then streams live', async () => {
+    for (let i = 0; i < 3; i++) {
+      await agent.handleMessage({
+        id: `m${i}`,
+        from_agent: AgentRole.ORCHESTRATOR,
+        to_agent: AgentRole.HTTP_API,
+        type: MessageType.STATUS,
+        payload: { sessionId: 's1', stage: 'intake', message: String(i) },
+        created_at: Date.now(),
+        acked_at: null,
+      })
+    }
+
+    const collected: number[] = []
+    const iter = agent.subscribe('s1', 1)
+    const consumer = (async () => {
+      for await (const evt of iter) {
+        collected.push(evt.id)
+        if (collected.length === 3) break
+      }
+    })()
+
+    await Bun.sleep(20)
+    await agent.handleMessage({
+      id: 'm-live',
+      from_agent: AgentRole.ORCHESTRATOR,
+      to_agent: AgentRole.HTTP_API,
+      type: MessageType.STATUS,
+      payload: { sessionId: 's1', stage: 'researching', message: 'live' },
+      created_at: Date.now(),
+      acked_at: null,
+    })
+
+    await consumer
+    expect(collected).toEqual([2, 3, 4])
+  })
+})

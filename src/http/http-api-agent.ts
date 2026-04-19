@@ -5,6 +5,9 @@ import type {
   ResumeResultPayload,
   ResearchResultPayload,
   InterviewResultPayload,
+  IntakeDispatchPayload,
+  ApproveResumePayload,
+  StartInterviewPayload,
 } from '../agents/types'
 import type { AgentEvent, AgentEventType, OrchestratorStage, Snapshot } from '../agents/events'
 
@@ -109,5 +112,38 @@ export class HttpApiAgent extends BaseAgent {
       resumeSections: s.resumeSections,
       interviewFeedback: s.interviewFeedback,
     }
+  }
+
+  startSession(payload: IntakeDispatchPayload): void {
+    this.ensureSession(payload.sessionId)
+    this.send(AgentRole.ORCHESTRATOR, MessageType.DISPATCH, payload)
+  }
+
+  sendCommand(
+    sessionId: string,
+    payload: ApproveResumePayload | StartInterviewPayload,
+  ): void {
+    this.ensureSession(sessionId)
+    this.send(AgentRole.ORCHESTRATOR, MessageType.DISPATCH, payload)
+  }
+
+  subscribe(sessionId: string, lastEventId = 0): AsyncIterable<AgentEvent> {
+    const session = this.ensureSession(sessionId)
+    return (async function* () {
+      session.subscriberCount++
+      try {
+        for (const e of session.buffer) {
+          if (e.id > lastEventId) yield e
+        }
+        while (true) {
+          const next = await new Promise<AgentEvent>((resolve) => {
+            session.emitter.once('event', resolve)
+          })
+          yield next
+        }
+      } finally {
+        session.subscriberCount--
+      }
+    })()
   }
 }
