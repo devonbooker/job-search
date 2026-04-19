@@ -79,12 +79,7 @@ export class TopicDrill extends BaseAgent {
     })
 
     const text = response.content.find(b => b.type === 'text')?.text ?? ''
-    let feedback: InterviewFeedback
-    try {
-      feedback = parseClaudeJson<InterviewFeedback>(text)
-    } catch {
-      throw new Error(`TopicDrill: Claude returned invalid JSON: ${text.slice(0, 100)}`)
-    }
+    const feedback = parseClaudeJson<InterviewFeedback>(text)
 
     this.send(AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,

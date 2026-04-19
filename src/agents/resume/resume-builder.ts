@@ -48,18 +48,13 @@ export class ResumeBuilder extends BaseAgent {
 
     const response = await this.anthropic.messages.create({
       model: this.model,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     })
 
     const text = response.content.find(b => b.type === 'text')?.text ?? ''
-    let sections: ResumeSection[]
-    try {
-      sections = parseClaudeJson<ResumeSection[]>(text)
-    } catch {
-      throw new Error(`ResumeBuilder: Claude returned invalid JSON: ${text.slice(0, 100)}`)
-    }
+    const sections = parseClaudeJson<ResumeSection[]>(text)
 
     this.send(AgentRole.RESUME_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,

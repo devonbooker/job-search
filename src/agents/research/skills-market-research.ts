@@ -69,12 +69,7 @@ export class SkillsMarketResearch extends BaseAgent {
     })
 
     const text = claudeResponse.content.find(b => b.type === 'text')?.text ?? ''
-    let skillsByTitle: SkillsResult[]
-    try {
-      skillsByTitle = parseClaudeJson<SkillsResult[]>(text)
-    } catch {
-      throw new Error(`SkillsMarketResearch: Claude returned invalid JSON: ${text.slice(0, 100)}`)
-    }
+    const skillsByTitle = parseClaudeJson<SkillsResult[]>(text)
 
     this.send(AgentRole.RESEARCH_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,
