@@ -116,3 +116,29 @@ describe('GET /sessions/:id', () => {
     expect(res.status).toBe(404)
   })
 })
+
+describe('Jobs CRUD', () => {
+  let queue: MessageQueue
+  let agent: HttpApiAgent
+  let app: ReturnType<typeof createApp>
+
+  beforeEach(() => {
+    queue = new MessageQueue(TEST_DB)
+    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
+    app = createApp({ httpApiAgent: agent, token: TOKEN })
+  })
+
+  afterEach(() => {
+    queue.close()
+    if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
+  })
+
+  test('GET /jobs returns array or 503', async () => {
+    const res = await app.request('/jobs', { headers: { Authorization: `Bearer ${TOKEN}` } })
+    expect([200, 503]).toContain(res.status)
+    if (res.status === 200) {
+      const body = await res.json()
+      expect(Array.isArray(body)).toBe(true)
+    }
+  })
+})

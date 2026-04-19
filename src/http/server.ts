@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { HttpApiAgent } from './http-api-agent'
 import { mountSessionRoutes } from './routes/sessions'
 import { mountSseRoutes } from './routes/sse'
+import { mountJobRoutes } from './routes/jobs'
 
 export interface AppDeps {
   httpApiAgent: HttpApiAgent
@@ -25,6 +26,7 @@ export function createApp(deps: AppDeps) {
 
   mountSessionRoutes(app, deps.httpApiAgent)
   mountSseRoutes(app, deps.httpApiAgent)
+  mountJobRoutes(app)
 
   return app
 }
