@@ -36,7 +36,8 @@ export class JobTitleResearch extends BaseAgent {
     const dispatch = message.payload as JobTitleResearchDispatchPayload
     const { profile } = dispatch
 
-    const query = encodeURIComponent(`job titles for ${profile.goals} ${profile.experience} ${new Date().getFullYear()}`)
+    const rawQuery = `job titles for ${profile.goals} ${new Date().getFullYear()}`
+    const query = encodeURIComponent(rawQuery.slice(0, 380))
     const url = `https://api.search.brave.com/res/v1/web/search?q=${query}&count=10`
     const response = await this.fetcher(url, {
       headers: {
@@ -46,7 +47,8 @@ export class JobTitleResearch extends BaseAgent {
     })
 
     if (!response.ok) {
-      throw new Error(`Brave Search error: ${response.status}`)
+      const body = await response.text().catch(() => '')
+      throw new Error(`Brave Search error: ${response.status} - q=${JSON.stringify(rawQuery.slice(0, 100))} body=${body.slice(0, 200)}`)
     }
 
     const data = await response.json() as { web?: { results?: { description?: string }[] } }
