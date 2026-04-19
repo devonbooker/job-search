@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach } from 'vitest'
-import { useSessionStore } from '../../state/session'
-import { AgentRole } from '../../../agents/types'
+import { useSessionStore } from '../../src/web/state/session'
+import { AgentRole } from '../../src/agents/types'
 
 describe('session store', () => {
   beforeEach(() => {
