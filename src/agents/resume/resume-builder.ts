@@ -10,6 +10,7 @@ import {
   type ResumeSection,
 } from '../types'
 import { SONNET_MODEL } from '../constants'
+import { parseClaudeJson } from '../json-extract'
 
 const SYSTEM_PROMPT = `You are an expert resume writer. Build a tailored resume that maps the user's experience to the target job titles and required skills.
 Respond with ONLY a JSON array of resume sections:
@@ -55,7 +56,7 @@ export class ResumeBuilder extends BaseAgent {
     const text = response.content.find(b => b.type === 'text')?.text ?? ''
     let sections: ResumeSection[]
     try {
-      sections = JSON.parse(text) as ResumeSection[]
+      sections = parseClaudeJson<ResumeSection[]>(text)
     } catch {
       throw new Error(`ResumeBuilder: Claude returned invalid JSON: ${text.slice(0, 100)}`)
     }

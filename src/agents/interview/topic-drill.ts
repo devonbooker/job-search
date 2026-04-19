@@ -12,6 +12,7 @@ import {
   type BulletItem,
 } from '../types'
 import { SONNET_MODEL } from '../constants'
+import { parseClaudeJson } from '../json-extract'
 
 const GENERATE_SYSTEM = `You are an interview coach generating a targeted interview question.
 Given a resume topic and context, generate one behavioral or technical question.
@@ -80,7 +81,7 @@ export class TopicDrill extends BaseAgent {
     const text = response.content.find(b => b.type === 'text')?.text ?? ''
     let feedback: InterviewFeedback
     try {
-      feedback = JSON.parse(text) as InterviewFeedback
+      feedback = parseClaudeJson<InterviewFeedback>(text)
     } catch {
       throw new Error(`TopicDrill: Claude returned invalid JSON: ${text.slice(0, 100)}`)
     }

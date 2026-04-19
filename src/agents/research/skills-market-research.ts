@@ -10,6 +10,7 @@ import {
   type SkillsResult,
 } from '../types'
 import { SONNET_MODEL } from '../constants'
+import { parseClaudeJson } from '../json-extract'
 
 const SYSTEM_PROMPT = `You are a technical skills researcher. Given job titles and search results from real job postings, extract required and nice-to-have skills.
 Respond with ONLY a JSON array matching this schema:
@@ -70,7 +71,7 @@ export class SkillsMarketResearch extends BaseAgent {
     const text = claudeResponse.content.find(b => b.type === 'text')?.text ?? ''
     let skillsByTitle: SkillsResult[]
     try {
-      skillsByTitle = JSON.parse(text) as SkillsResult[]
+      skillsByTitle = parseClaudeJson<SkillsResult[]>(text)
     } catch {
       throw new Error(`SkillsMarketResearch: Claude returned invalid JSON: ${text.slice(0, 100)}`)
     }

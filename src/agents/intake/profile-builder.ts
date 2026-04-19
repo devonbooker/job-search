@@ -10,6 +10,7 @@ import {
   type UserProfile,
 } from '../types'
 import { SONNET_MODEL } from '../constants'
+import { parseClaudeJson } from '../json-extract'
 
 const SYSTEM_PROMPT = `You are a profile structuring assistant. Given raw intake answers, produce a structured JSON profile.
 Respond with ONLY a JSON object matching this schema:
@@ -50,7 +51,7 @@ export class ProfileBuilder extends BaseAgent {
     })
 
     const text = response.content.find((b: { type: string }) => b.type === 'text')?.text ?? ''
-    const profile = JSON.parse(text) as UserProfile
+    const profile = parseClaudeJson<UserProfile>(text)
 
     this.send(AgentRole.INTAKE_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,

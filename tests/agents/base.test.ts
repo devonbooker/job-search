@@ -85,7 +85,7 @@ describe('BaseAgent', () => {
     await runPromise
   })
 
-  test('run does not ack message if handleMessage throws, and retries it', async () => {
+  test('run acks message even if handleMessage throws, and emits ERROR to HTTP_API', async () => {
     let callCount = 0
     class ThrowingAgent extends BaseAgent {
       readonly role = AgentRole.RESEARCH_LEAD
@@ -103,8 +103,15 @@ describe('BaseAgent', () => {
     await throwing.stop()
     await runPromise
 
-    expect(callCount).toBeGreaterThanOrEqual(2)
+    expect(callCount).toBe(1)
     const stillThere = queue.receive(AgentRole.RESEARCH_LEAD)
-    expect(stillThere).not.toBeNull()
+    expect(stillThere).toBeNull()
+
+    const errMsg = queue.receive(AgentRole.HTTP_API)
+    expect(errMsg).not.toBeNull()
+    expect(errMsg!.type).toBe(MessageType.ERROR)
+    expect(errMsg!.from_agent).toBe(AgentRole.RESEARCH_LEAD)
+    expect((errMsg!.payload as { sessionId: string; message: string }).sessionId).toBe('z')
+    expect((errMsg!.payload as { sessionId: string; message: string }).message).toBe('boom')
   })
 })

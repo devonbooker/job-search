@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { MessageQueue } from './queue'
-import type { AgentRole, MessageType, Message } from './types'
+import { AgentRole, MessageType, type Message } from './types'
 
 export abstract class BaseAgent {
   abstract readonly role: AgentRole
@@ -52,10 +52,11 @@ export abstract class BaseAgent {
       if (message) {
         try {
           await this.handleMessage(message)
-          this.queue.ack(message.id)
         } catch (err) {
           console.error(`[${this.role}] handleMessage error:`, err)
-          await Bun.sleep(this.pollIntervalMs)
+          this.emitError(message, err)
+        } finally {
+          this.queue.ack(message.id)
         }
       } else {
         await Bun.sleep(this.pollIntervalMs)
@@ -67,6 +68,20 @@ export abstract class BaseAgent {
     this.running = false
     if (this.runPromise) {
       await this.runPromise
+    }
+  }
+
+  private emitError(message: Message, err: unknown): void {
+    const sessionId = (message.payload as { sessionId?: string } | null)?.sessionId
+    if (!sessionId) return
+    try {
+      this.send(AgentRole.HTTP_API, MessageType.ERROR, {
+        sessionId,
+        agent: this.role,
+        message: err instanceof Error ? err.message : String(err),
+      })
+    } catch (sendErr) {
+      console.error(`[${this.role}] failed to emit error event:`, sendErr)
     }
   }
 }
