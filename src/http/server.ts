@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { serveStatic } from 'hono/bun'
 import type { HttpApiAgent } from './http-api-agent'
 import { mountSessionRoutes } from './routes/sessions'
 import { mountSseRoutes } from './routes/sse'
@@ -27,6 +28,11 @@ export function createApp(deps: AppDeps) {
   mountSessionRoutes(app, deps.httpApiAgent)
   mountSseRoutes(app, deps.httpApiAgent)
   mountJobRoutes(app)
+
+  app.use('/*', serveStatic({ root: './dist/web' }))
+  app.notFound((c) => {
+    return serveStatic({ root: './dist/web', path: 'index.html' })(c, async () => {})
+  })
 
   return app
 }
