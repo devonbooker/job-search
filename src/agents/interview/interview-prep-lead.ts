@@ -23,6 +23,12 @@ export class InterviewPrepLead extends BaseAgent {
   async handleMessage(message: Message): Promise<void> {
     if (message.type === MessageType.DISPATCH) {
       const dispatch = message.payload as InterviewDispatchPayload
+      this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+        sessionId: dispatch.sessionId,
+        stage: 'interview_prep',
+        agent: AgentRole.INTERVIEW_PREP_LEAD,
+        message: 'drilling topic',
+      })
       this.send(AgentRole.TOPIC_DRILL, MessageType.DISPATCH, {
         sessionId: dispatch.sessionId,
         resumeSections: dispatch.resumeSections,

@@ -7,6 +7,7 @@ import {
   MessageType,
   type JobSearchDispatchPayload,
   type AdzunaSearchResultPayload,
+  type Message,
 } from '../../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
 
@@ -42,6 +43,27 @@ describe('JobSearchLead', () => {
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.JOB_SEARCH_LEAD)
     expect(msg!.type).toBe(MessageType.DISPATCH)
+  })
+
+  test('emits STATUS to HTTP_API on receiving dispatch', async () => {
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.JOB_SEARCH_LEAD, MessageType.DISPATCH, {
+      sessionId: 'ses-lead',
+      targetTitles: ['Security Engineer'],
+    } satisfies JobSearchDispatchPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(100)
+    await agent.stop()
+    await runPromise
+
+    const msgs: Message[] = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      msgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+    expect(msgs.some(m => m.type === MessageType.STATUS && m.from_agent === AgentRole.JOB_SEARCH_LEAD)).toBe(true)
   })
 
   test('forwards AdzunaSearch result to Orchestrator', async () => {

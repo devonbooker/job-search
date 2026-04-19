@@ -7,6 +7,7 @@ import {
   MessageType,
   type IntakeDispatchPayload,
   type ProfileBuilderResultPayload,
+  type Message,
 } from '../../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
 
@@ -45,6 +46,29 @@ describe('IntakeLead', () => {
     expect(msg!.from_agent).toBe(AgentRole.INTAKE_LEAD)
     expect(msg!.type).toBe(MessageType.DISPATCH)
     expect((msg!.payload as { sessionId: string }).sessionId).toBe('il-1')
+  })
+
+  test('emits STATUS to HTTP_API on receiving dispatch', async () => {
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.INTAKE_LEAD, MessageType.DISPATCH, {
+      sessionId: 'ses-lead',
+      goals: 'g',
+      experience: 'e',
+      preferences: 'p',
+    } satisfies IntakeDispatchPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(100)
+    await agent.stop()
+    await runPromise
+
+    const msgs: Message[] = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      msgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+    expect(msgs.some(m => m.type === MessageType.STATUS && m.from_agent === AgentRole.INTAKE_LEAD)).toBe(true)
   })
 
   test('forwards ProfileBuilder result to Orchestrator', async () => {
