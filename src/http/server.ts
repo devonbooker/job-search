@@ -1,4 +1,4 @@
-import { Hono } from 'hono'
+import { Hono, type MiddlewareHandler } from 'hono'
 import { serveStatic } from 'hono/bun'
 import type { HttpApiAgent } from './http-api-agent'
 import { mountSessionRoutes } from './routes/sessions'
@@ -13,9 +13,7 @@ export interface AppDeps {
 export function createApp(deps: AppDeps) {
   const app = new Hono()
 
-  app.use('*', async (c, next) => {
-    // Skip auth for static assets + / and /config could be tokenless in future,
-    // but for v1 we require auth on everything.
+  const requireAuth: MiddlewareHandler = async (c, next) => {
     const header = c.req.header('Authorization')
     const queryToken = c.req.query('token')
     const provided = header?.startsWith('Bearer ') ? header.slice(7) : queryToken
@@ -23,7 +21,9 @@ export function createApp(deps: AppDeps) {
       return c.json({ error: 'Unauthorized' }, 401)
     }
     await next()
-  })
+  }
+  app.use('/sessions/*', requireAuth)
+  app.use('/jobs/*', requireAuth)
 
   mountSessionRoutes(app, deps.httpApiAgent)
   mountSseRoutes(app, deps.httpApiAgent)
