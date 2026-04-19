@@ -201,3 +201,19 @@ describe('HttpApiAgent.startSession / sendCommand / subscribe', () => {
     expect(collected).toEqual([2, 3, 4])
   })
 })
+
+describe('HttpApiAgent.purge', () => {
+  test('drops sessions with no subscribers and stale lastActivityAt', () => {
+    const queue = new MessageQueue(TEST_DB)
+    const agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
+
+    agent.startSession({ sessionId: 's1', goals: 'g', experience: 'e', preferences: 'p' })
+    expect(agent.getSnapshot('s1')).not.toBeNull()
+
+    agent.purgeStaleSessions(Date.now() + 2 * 60 * 60 * 1000)
+    expect(agent.getSnapshot('s1')).toBeNull()
+
+    queue.close()
+    if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
+  })
+})

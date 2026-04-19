@@ -47,6 +47,7 @@ export class HttpApiAgent extends BaseAgent {
   readonly role = AgentRole.HTTP_API
   readonly model = ''
   private sessions = new Map<string, SessionMeta>()
+  private static readonly TTL_MS = 60 * 60 * 1000  // 1 hour
 
   private ensureSession(sessionId: string): SessionMeta {
     let s = this.sessions.get(sessionId)
@@ -145,5 +146,13 @@ export class HttpApiAgent extends BaseAgent {
         session.subscriberCount--
       }
     })()
+  }
+
+  purgeStaleSessions(now = Date.now()): void {
+    for (const [id, s] of this.sessions) {
+      if (s.subscriberCount === 0 && now - s.lastActivityAt > HttpApiAgent.TTL_MS) {
+        this.sessions.delete(id)
+      }
+    }
   }
 }
