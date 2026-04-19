@@ -3,12 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run --watch src/main.ts",
     "test": "bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "pg": "^8.13.0"
+    "hono": "^4.12.14",
+    "pg": "^8.13.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/pg": "^8.11.0",

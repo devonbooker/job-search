@@ -23,6 +23,12 @@ export class JobSearchLead extends BaseAgent {
   async handleMessage(message: Message): Promise<void> {
     if (message.type === MessageType.DISPATCH) {
       const dispatch = message.payload as JobSearchDispatchPayload
+      this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+        sessionId: dispatch.sessionId,
+        stage: 'searching_jobs',
+        agent: AgentRole.JOB_SEARCH_LEAD,
+        message: 'searching jobs',
+      })
       this.send(AgentRole.ADZUNA_SEARCH, MessageType.DISPATCH, {
         sessionId: dispatch.sessionId,
         targetTitles: dispatch.targetTitles,

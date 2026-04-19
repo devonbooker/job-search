@@ -23,6 +23,12 @@ export class ResumeLead extends BaseAgent {
   async handleMessage(message: Message): Promise<void> {
     if (message.type === MessageType.DISPATCH) {
       const dispatch = message.payload as ResumeDispatchPayload
+      this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+        sessionId: dispatch.sessionId,
+        stage: 'building_resume',
+        agent: AgentRole.RESUME_LEAD,
+        message: 'building resume',
+      })
       this.send(AgentRole.RESUME_BUILDER, MessageType.DISPATCH, {
         sessionId: dispatch.sessionId,
         profile: dispatch.profile,

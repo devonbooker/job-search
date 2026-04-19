@@ -22,6 +22,12 @@ export class IntakeLead extends BaseAgent {
   async handleMessage(message: Message): Promise<void> {
     if (message.type === MessageType.DISPATCH) {
       const dispatch = message.payload as IntakeDispatchPayload
+      this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+        sessionId: dispatch.sessionId,
+        stage: 'intake',
+        agent: AgentRole.INTAKE_LEAD,
+        message: 'building profile',
+      })
       this.send(AgentRole.PROFILE_BUILDER, MessageType.DISPATCH, {
         sessionId: dispatch.sessionId,
         goals: dispatch.goals,

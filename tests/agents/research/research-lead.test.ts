@@ -8,6 +8,7 @@ import {
   type ResearchDispatchPayload,
   type JobTitleResearchResultPayload,
   type SkillsMarketResearchResultPayload,
+  type Message,
 } from '../../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
 
@@ -42,6 +43,27 @@ describe('ResearchLead', () => {
     const msg = queue.receive(AgentRole.JOB_TITLE_RESEARCH)
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.RESEARCH_LEAD)
+  })
+
+  test('emits STATUS to HTTP_API on receiving dispatch', async () => {
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, {
+      sessionId: 'ses-lead',
+      profile: { goals: 'g', experience: 'e', resumeRaw: null, preferences: 'p' },
+    } satisfies ResearchDispatchPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(100)
+    await agent.stop()
+    await runPromise
+
+    const msgs: Message[] = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      msgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+    expect(msgs.some(m => m.type === MessageType.STATUS && m.from_agent === AgentRole.RESEARCH_LEAD)).toBe(true)
   })
 
   test('dispatches to SkillsMarketResearch after JobTitleResearch result', async () => {

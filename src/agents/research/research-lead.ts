@@ -40,6 +40,12 @@ export class ResearchLead extends BaseAgent {
         stage: 'awaiting_titles',
         profile: dispatch.profile,
       })
+      this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+        sessionId: dispatch.sessionId,
+        stage: 'researching',
+        agent: AgentRole.RESEARCH_LEAD,
+        message: 'researching job titles + skills',
+      })
       this.send(AgentRole.JOB_TITLE_RESEARCH, MessageType.DISPATCH, {
         sessionId: dispatch.sessionId,
         profile: dispatch.profile,

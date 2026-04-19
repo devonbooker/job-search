@@ -7,6 +7,7 @@ import {
   MessageType,
   type InterviewDispatchPayload,
   type TopicDrillResultPayload,
+  type Message,
 } from '../../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
 
@@ -43,6 +44,28 @@ describe('InterviewPrepLead', () => {
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.INTERVIEW_PREP_LEAD)
     expect(msg!.type).toBe(MessageType.DISPATCH)
+  })
+
+  test('emits STATUS to HTTP_API on receiving dispatch', async () => {
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.INTERVIEW_PREP_LEAD, MessageType.DISPATCH, {
+      sessionId: 'ses-lead',
+      resumeSections: [],
+      selectedTopic: 'auth',
+    } satisfies InterviewDispatchPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(100)
+    await agent.stop()
+    await runPromise
+
+    const msgs: Message[] = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      msgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+    expect(msgs.some(m => m.type === MessageType.STATUS && m.from_agent === AgentRole.INTERVIEW_PREP_LEAD)).toBe(true)
   })
 
   test('forwards TopicDrill result to Orchestrator', async () => {
