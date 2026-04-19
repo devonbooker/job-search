@@ -42,6 +42,14 @@ export class InterviewPrepLead extends BaseAgent {
     if (message.type === MessageType.RESULT) {
       if (message.from_agent !== AgentRole.TOPIC_DRILL) return
       const result = message.payload as TopicDrillResultPayload
+      if (result.feedback.feedback === '') {
+        this.send(AgentRole.HTTP_API, MessageType.STATUS, {
+          sessionId: result.sessionId,
+          agent: AgentRole.INTERVIEW_PREP_LEAD,
+          message: 'question generated',
+          question: result.feedback.question,
+        })
+      }
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
         sessionId: result.sessionId,
         feedback: result.feedback,

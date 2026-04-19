@@ -68,6 +68,37 @@ describe('InterviewPrepLead', () => {
     expect(msgs.some(m => m.type === MessageType.STATUS && m.from_agent === AgentRole.INTERVIEW_PREP_LEAD)).toBe(true)
   })
 
+  test('emits STATUS with question to HTTP_API on question-only result', async () => {
+    queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
+      sessionId: 'ipl-q',
+      feedback: {
+        question: 'Tell me about caching.',
+        feedback: '',
+        clarity: 'strong',
+        specificity: 'strong',
+      },
+    } satisfies TopicDrillResultPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(200)
+    await agent.stop()
+    await runPromise
+
+    const msgs: Message[] = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      msgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+    const statusMsg = msgs.find(
+      m => m.type === MessageType.STATUS && m.from_agent === AgentRole.INTERVIEW_PREP_LEAD,
+    )
+    expect(statusMsg).not.toBeUndefined()
+    expect((statusMsg!.payload as { question?: string; message?: string }).question).toBe('Tell me about caching.')
+    expect((statusMsg!.payload as { question?: string; message?: string }).message).toBe('question generated')
+  })
+
   test('forwards TopicDrill result to Orchestrator', async () => {
     queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
       sessionId: 'ipl-2',

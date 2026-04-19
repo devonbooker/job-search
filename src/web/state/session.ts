@@ -16,6 +16,7 @@ interface State {
   interviewFeedback?: InterviewFeedback
   events: AgentEvent[]
   setSessionId(id: string | null): void
+  setInterviewQuestion(q: string): void
   setFromSnapshot(snap: Snapshot): void
   setFromEvent(evt: AgentEvent): void
   reset(): void
@@ -28,6 +29,7 @@ export const useSessionStore = create<State>((set) => ({
   stage: 'idle',
   events: [],
   setSessionId: (id) => set({ sessionId: id }),
+  setInterviewQuestion: (q) => set({ interviewQuestion: q }),
   setFromSnapshot: (snap) => set({
     sessionId: snap.sessionId,
     stage: snap.stage,
@@ -56,6 +58,10 @@ export const useSessionStore = create<State>((set) => ({
       if (evt.from === AgentRole.INTERVIEW_PREP_LEAD) {
         patch.interviewFeedback = (evt.payload as InterviewResultPayload).feedback
       }
+    }
+    if (evt.from === AgentRole.INTERVIEW_PREP_LEAD && evt.type === 'status') {
+      const q = (evt.payload as { question?: string }).question
+      if (q) patch.interviewQuestion = q
     }
     return patch
   }),
