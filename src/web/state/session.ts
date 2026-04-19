@@ -47,15 +47,14 @@ export const useSessionStore = create<State>((set) => ({
     if (typeof p.stage === 'string') patch.stage = p.stage as OrchestratorStage
 
     if (evt.type === 'result') {
-      if (evt.from === AgentRole.RESEARCH_LEAD) {
-        const r = evt.payload as ResearchResultPayload
-        patch.jobTitles = r.jobTitles
-        patch.skillsByTitle = r.skillsByTitle
+      if (Array.isArray(p.jobTitles)) {
+        patch.jobTitles = (evt.payload as ResearchResultPayload).jobTitles
+        patch.skillsByTitle = (evt.payload as ResearchResultPayload).skillsByTitle
       }
-      if (evt.from === AgentRole.RESUME_LEAD) {
+      if (Array.isArray(p.sections)) {
         patch.resumeSections = (evt.payload as ResumeResultPayload).sections
       }
-      if (evt.from === AgentRole.INTERVIEW_PREP_LEAD) {
+      if (p.feedback && typeof p.feedback === 'object') {
         patch.interviewFeedback = (evt.payload as InterviewResultPayload).feedback
       }
     }
