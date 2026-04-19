@@ -20,15 +20,7 @@ import {
   type UserProfile,
 } from './types'
 import { OPUS_MODEL } from './constants'
-
-type OrchestratorStage =
-  | 'idle'
-  | 'intake'
-  | 'researching'
-  | 'building_resume'
-  | 'awaiting_resume_approval'
-  | 'searching_jobs'
-  | 'interview_prep'
+import type { OrchestratorStage } from './events'
 
 interface SessionState {
   stage: OrchestratorStage
