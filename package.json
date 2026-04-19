@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bun run src/index.ts",
+    "dev": "bun run --watch src/main.ts",
     "test": "bun test"
   },
   "dependencies": {
