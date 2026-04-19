@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { Layout } from './components/Layout'
 import { Intake } from './routes/Intake'
@@ -8,16 +7,6 @@ import { Jobs } from './routes/Jobs'
 import { Interview } from './routes/Interview'
 
 export function App() {
-  useEffect(() => {
-    const url = new URL(window.location.href)
-    const token = url.searchParams.get('token')
-    if (token) {
-      sessionStorage.setItem('auth-token', token)
-      url.searchParams.delete('token')
-      window.history.replaceState(null, '', url.toString())
-    }
-  }, [])
-
   return (
     <Layout>
       <Routes>
