@@ -1,0 +1,4 @@
+[install]
+# Bun's default hardlink backend drops files on this Windows setup (leaves
+# empty package directories). copyfile only copies top-level. symlink works.
+backend = "symlink"
