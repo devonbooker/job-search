@@ -22,8 +22,9 @@ import {
 } from './types'
 import { OPUS_MODEL } from './constants'
 import type { OrchestratorStage } from './events'
+import { SessionStore } from './session-store'
 
-interface SessionState {
+export interface SessionState {
   stage: OrchestratorStage
   profile?: UserProfile
   research?: ResearchResultPayload
@@ -35,8 +36,17 @@ export class Orchestrator extends BaseAgent {
   readonly model = OPUS_MODEL
   private sessions = new Map<string, SessionState>()
 
-  constructor(queue: MessageQueue, anthropic: Anthropic) {
+  constructor(
+    queue: MessageQueue,
+    anthropic: Anthropic,
+    private readonly store: SessionStore<SessionState>,
+  ) {
     super(queue, anthropic)
+  }
+
+  async run(): Promise<void> {
+    this.sessions = await this.store.loadAll()
+    return super.run()
   }
 
   async handleMessage(message: Message): Promise<void> {
@@ -46,6 +56,7 @@ export class Orchestrator extends BaseAgent {
       if (typeof p.goals === 'string') {
         const payload = p as unknown as IntakeDispatchPayload
         this.sessions.set(payload.sessionId, { stage: 'intake' })
+        await this.store.save(payload.sessionId, { stage: 'intake' }, 'intake')
         this.emitStatus(payload.sessionId, 'intake')
         this.send(AgentRole.INTAKE_LEAD, MessageType.DISPATCH, payload)
         return
@@ -59,6 +70,7 @@ export class Orchestrator extends BaseAgent {
           return
         }
         session.stage = 'searching_jobs'
+        await this.store.save(payload.sessionId, session, 'searching_jobs')
         this.emitStatus(payload.sessionId, 'searching_jobs')
         this.send(AgentRole.JOB_SEARCH_LEAD, MessageType.DISPATCH, {
           sessionId: payload.sessionId,
@@ -75,6 +87,7 @@ export class Orchestrator extends BaseAgent {
           return
         }
         session.stage = 'interview_prep'
+        await this.store.save(payload.sessionId, session, 'interview_prep')
         this.emitStatus(payload.sessionId, 'interview_prep')
         this.send(AgentRole.INTERVIEW_PREP_LEAD, MessageType.DISPATCH, {
           sessionId: payload.sessionId,
@@ -94,6 +107,7 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.profile = result.profile
           session.stage = 'researching'
+          await this.store.save(result.sessionId, session, 'researching')
           this.emitStatus(result.sessionId, 'researching')
           this.send(AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, {
             sessionId: result.sessionId,
@@ -107,6 +121,7 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.research = result
           session.stage = 'building_resume'
+          await this.store.save(result.sessionId, session, 'building_resume')
           this.emitStatus(result.sessionId, 'building_resume')
           this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
           if (!session.profile) {
@@ -128,6 +143,7 @@ export class Orchestrator extends BaseAgent {
           if (!session) return
           session.resume = result
           session.stage = 'awaiting_resume_approval'
+          await this.store.save(result.sessionId, session, 'awaiting_resume_approval')
           this.emitStatus(result.sessionId, 'awaiting_resume_approval')
           this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
           break
@@ -140,6 +156,7 @@ export class Orchestrator extends BaseAgent {
           this.emitStatus(result.sessionId, 'idle')
           this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
           this.sessions.delete(result.sessionId)
+          await this.store.delete(result.sessionId)
           break
         }
         case AgentRole.INTERVIEW_PREP_LEAD: {
@@ -150,6 +167,7 @@ export class Orchestrator extends BaseAgent {
           this.emitStatus(result.sessionId, 'interview_prep')
           this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
           this.sessions.delete(result.sessionId)
+          await this.store.delete(result.sessionId)
           break
         }
         default:

@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
 import { Orchestrator } from '../../src/agents/orchestrator'
 import { MessageQueue } from '../../src/agents/queue'
@@ -12,22 +12,36 @@ import {
   type StartInterviewPayload,
 } from '../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
+import { pool, runMigrations } from '../../src/db/postgres'
+import { SessionStore } from '../../src/agents/session-store'
+import type { SessionState } from '../../src/agents/orchestrator'
 
 const TEST_DB = './test-orchestrator.db'
 
 describe('Orchestrator', () => {
   let queue: MessageQueue
   let orchestrator: Orchestrator
+  let store: SessionStore<SessionState>
 
-  beforeEach(() => {
+  beforeAll(async () => {
+    await runMigrations()
+    store = new SessionStore<SessionState>({ pool, table: 'orchestrator_sessions' })
+  })
+
+  beforeEach(async () => {
+    await pool.query('TRUNCATE TABLE orchestrator_sessions')
     queue = new MessageQueue(TEST_DB)
-    orchestrator = new Orchestrator(queue, new Anthropic({ apiKey: 'test-key' }))
+    orchestrator = new Orchestrator(queue, new Anthropic({ apiKey: 'test-key' }), store)
   })
 
   afterEach(async () => {
     await orchestrator.stop()
     queue.close()
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
+  })
+
+  afterAll(async () => {
+    await pool.query('TRUNCATE TABLE orchestrator_sessions')
   })
 
   test('routes intake dispatch to IntakeLead', async () => {
