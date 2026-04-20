@@ -20,6 +20,7 @@ export type OrchestratorStage =
   | 'idle'
   | 'intake'
   | 'researching'
+  | 'awaiting_title_selection'
   | 'building_resume'
   | 'awaiting_resume_approval'
   | 'searching_jobs'
