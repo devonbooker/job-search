@@ -99,7 +99,7 @@ describe('InterviewPrepLead', () => {
     expect((statusMsg!.payload as { question?: string; message?: string }).message).toBe('question generated')
   })
 
-  test('forwards TopicDrill result to Orchestrator', async () => {
+  test('forwards TopicDrill result to Orchestrator when feedback is non-empty', async () => {
     queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
       sessionId: 'ipl-2',
       feedback: {
@@ -119,5 +119,24 @@ describe('InterviewPrepLead', () => {
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.INTERVIEW_PREP_LEAD)
     expect(msg!.type).toBe(MessageType.RESULT)
+  })
+
+  test('does NOT forward to Orchestrator on question-only result (empty feedback)', async () => {
+    queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
+      sessionId: 'ipl-3',
+      feedback: {
+        question: 'What is a TCP handshake?',
+        feedback: '',
+        clarity: 'strong',
+        specificity: 'strong',
+      },
+    } satisfies TopicDrillResultPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(200)
+    await agent.stop()
+    await runPromise
+
+    expect(queue.receive(AgentRole.ORCHESTRATOR)).toBeNull()
   })
 })

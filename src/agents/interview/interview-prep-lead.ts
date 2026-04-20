@@ -49,6 +49,7 @@ export class InterviewPrepLead extends BaseAgent {
           message: 'question generated',
           question: result.feedback.question,
         })
+        return
       }
       this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
         sessionId: result.sessionId,
