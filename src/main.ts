@@ -15,6 +15,9 @@ import { HttpApiAgent } from './http/http-api-agent'
 import { createApp } from './http/server'
 import { loadOrCreateToken } from './http/auth'
 import { runMigrations, pool } from './db/postgres'
+import { SessionStore } from './agents/session-store'
+import type { SessionState } from './agents/orchestrator'
+import type { ResearchSession } from './agents/research/research-lead'
 
 const DB_PATH = process.env.QUEUE_DB ?? './messages.db'
 const TOKEN_PATH = process.env.SESSION_TOKEN_PATH ?? './.session-token'
@@ -26,11 +29,14 @@ async function main() {
   const runtime = createRuntime(DB_PATH)
   const { queue, anthropic } = runtime
 
+  const orchestratorStore = new SessionStore<SessionState>({ pool, table: 'orchestrator_sessions' })
+  const researchStore = new SessionStore<ResearchSession>({ pool, table: 'research_lead_sessions' })
+
   const agents = [
-    new Orchestrator(queue, anthropic),
+    new Orchestrator(queue, anthropic, orchestratorStore),
     new IntakeLead(queue, anthropic),
     new ProfileBuilder(queue, anthropic),
-    new ResearchLead(queue, anthropic),
+    new ResearchLead(queue, anthropic, researchStore),
     new JobTitleResearch(queue, anthropic),
     new SkillsMarketResearch(queue, anthropic),
     new ResumeLead(queue, anthropic),
