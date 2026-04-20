@@ -15,10 +15,11 @@ import {
   type SkillsMarketResearchDispatchPayload,
 } from '../types'
 import { OPUS_MODEL } from '../constants'
+import { SessionStore } from '../session-store'
 
 type ResearchStage = 'awaiting_titles' | 'awaiting_skills'
 
-interface ResearchSession {
+export interface ResearchSession {
   stage: ResearchStage
   profile: UserProfile
   jobTitles?: JobTitleResult[]
@@ -29,8 +30,17 @@ export class ResearchLead extends BaseAgent {
   readonly model = OPUS_MODEL
   private sessions = new Map<string, ResearchSession>()
 
-  constructor(queue: MessageQueue, anthropic: Anthropic) {
+  constructor(
+    queue: MessageQueue,
+    anthropic: Anthropic,
+    private readonly store: SessionStore<ResearchSession>,
+  ) {
     super(queue, anthropic)
+  }
+
+  async run(): Promise<void> {
+    this.sessions = await this.store.loadAll()
+    return super.run()
   }
 
   async handleMessage(message: Message): Promise<void> {
@@ -40,6 +50,7 @@ export class ResearchLead extends BaseAgent {
         stage: 'awaiting_titles',
         profile: dispatch.profile,
       })
+      await this.store.save(dispatch.sessionId, { stage: 'awaiting_titles', profile: dispatch.profile })
       this.send(AgentRole.HTTP_API, MessageType.STATUS, {
         sessionId: dispatch.sessionId,
         stage: 'researching',
@@ -62,6 +73,7 @@ export class ResearchLead extends BaseAgent {
         const result = message.payload as JobTitleResearchResultPayload
         session.jobTitles = result.jobTitles
         session.stage = 'awaiting_skills'
+        await this.store.save(p.sessionId, session)
         this.send(AgentRole.SKILLS_MARKET_RESEARCH, MessageType.DISPATCH, {
           sessionId: result.sessionId,
           profile: session.profile,
@@ -75,9 +87,11 @@ export class ResearchLead extends BaseAgent {
         if (!session.jobTitles) {
           console.error(`[RESEARCH_LEAD] no jobTitles for session ${result.sessionId} at skills stage`)
           this.sessions.delete(result.sessionId)
+          await this.store.delete(result.sessionId)
           return
         }
         this.sessions.delete(result.sessionId)
+        await this.store.delete(result.sessionId)
         this.send(AgentRole.ORCHESTRATOR, MessageType.RESULT, {
           sessionId: result.sessionId,
           jobTitles: session.jobTitles,

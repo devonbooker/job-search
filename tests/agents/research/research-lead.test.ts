@@ -1,4 +1,4 @@
-import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
+import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from 'bun:test'
 import Anthropic from '@anthropic-ai/sdk'
 import { ResearchLead } from '../../../src/agents/research/research-lead'
 import { MessageQueue } from '../../../src/agents/queue'
@@ -11,22 +11,36 @@ import {
   type Message,
 } from '../../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
+import { pool, runMigrations } from '../../../src/db/postgres'
+import { SessionStore } from '../../../src/agents/session-store'
+import type { ResearchSession } from '../../../src/agents/research/research-lead'
 
 const TEST_DB = './test-research-lead.db'
 
 describe('ResearchLead', () => {
   let queue: MessageQueue
   let agent: ResearchLead
+  let store: SessionStore<ResearchSession>
 
-  beforeEach(() => {
+  beforeAll(async () => {
+    await runMigrations()
+    store = new SessionStore<ResearchSession>({ pool, table: 'research_lead_sessions' })
+  })
+
+  beforeEach(async () => {
+    await pool.query('TRUNCATE TABLE research_lead_sessions')
     queue = new MessageQueue(TEST_DB)
-    agent = new ResearchLead(queue, new Anthropic({ apiKey: 'test-key' }))
+    agent = new ResearchLead(queue, new Anthropic({ apiKey: 'test-key' }), store)
   })
 
   afterEach(async () => {
     await agent.stop()
     queue.close()
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB)
+  })
+
+  afterAll(async () => {
+    await pool.query('TRUNCATE TABLE research_lead_sessions')
   })
 
   test('dispatches to JobTitleResearch on incoming research dispatch', async () => {
