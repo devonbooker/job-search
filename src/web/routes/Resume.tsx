@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api'
 import { useSessionStore } from '../state/session'
 import type { BulletItem, ResumeSection } from '../../agents/types'
@@ -9,20 +10,21 @@ function renderContent(content: string | BulletItem[]) {
 }
 
 export function Resume() {
-  const { sessionId, resumeSections, jobTitles } = useSessionStore()
+  const nav = useNavigate()
+  const { sessionId, resumeSections } = useSessionStore()
   const [mode, setMode] = useState<'preview' | 'edit'>('preview')
   const [localSections, setLocalSections] = useState<ResumeSection[] | null>(null)
-  const [targets, setTargets] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
 
   if (!resumeSections) return <p>No resume yet. (Still building.)</p>
   const sections = localSections ?? resumeSections
 
-  async function approve() {
-    if (!sessionId || targets.size === 0) return
+  async function approveResume() {
+    if (!sessionId) return
     setSubmitting(true)
     try {
-      await api.approve(sessionId, Array.from(targets))
+      await api.approveResume(sessionId)
+      nav('/jobs')
     } finally {
       setSubmitting(false)
     }
@@ -40,23 +42,8 @@ export function Resume() {
             </section>
           ))}
         </div>
-        <h3>Pick target titles</h3>
-        {jobTitles?.map((jt) => (
-          <label key={jt.title} style={{ display: 'block' }}>
-            <input
-              type="checkbox"
-              checked={targets.has(jt.title)}
-              onChange={(e) => {
-                const next = new Set(targets)
-                if (e.target.checked) next.add(jt.title); else next.delete(jt.title)
-                setTargets(next)
-              }}
-            />
-            {jt.title}
-          </label>
-        ))}
-        <button onClick={approve} disabled={submitting || targets.size === 0}>
-          {submitting ? 'Sending...' : 'Approve targets & continue'}
+        <button onClick={approveResume} disabled={submitting}>
+          {submitting ? 'Sending...' : 'Approve resume → start job search'}
         </button>
       </div>
     )
