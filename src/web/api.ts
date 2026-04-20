@@ -25,10 +25,16 @@ export const api = {
   getSnapshot(sessionId: string) {
     return req<import('../agents/events').Snapshot>(`/sessions/${sessionId}`)
   },
-  approve(sessionId: string, targetTitles: string[]) {
-    return req<{ ok: true }>(`/sessions/${sessionId}/approve`, {
+  selectTitles(sessionId: string, targetTitles: string[]) {
+    return req<{ ok: true }>(`/sessions/${sessionId}/select-titles`, {
       method: 'POST',
       body: JSON.stringify({ targetTitles }),
+    })
+  },
+  approveResume(sessionId: string) {
+    return req<{ ok: true }>(`/sessions/${sessionId}/approve-resume`, {
+      method: 'POST',
+      body: JSON.stringify({}),
     })
   },
   interview(sessionId: string, body: unknown) {
