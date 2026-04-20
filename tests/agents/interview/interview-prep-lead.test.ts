@@ -68,7 +68,38 @@ describe('InterviewPrepLead', () => {
     expect(msgs.some(m => m.type === MessageType.STATUS && m.from_agent === AgentRole.INTERVIEW_PREP_LEAD)).toBe(true)
   })
 
-  test('forwards TopicDrill result to Orchestrator', async () => {
+  test('emits STATUS with question to HTTP_API on question-only result', async () => {
+    queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
+      sessionId: 'ipl-q',
+      feedback: {
+        question: 'Tell me about caching.',
+        feedback: '',
+        clarity: 'strong',
+        specificity: 'strong',
+      },
+    } satisfies TopicDrillResultPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(200)
+    await agent.stop()
+    await runPromise
+
+    const msgs: Message[] = []
+    let m = queue.receive(AgentRole.HTTP_API)
+    while (m) {
+      msgs.push(m)
+      queue.ack(m.id)
+      m = queue.receive(AgentRole.HTTP_API)
+    }
+    const statusMsg = msgs.find(
+      m => m.type === MessageType.STATUS && m.from_agent === AgentRole.INTERVIEW_PREP_LEAD,
+    )
+    expect(statusMsg).not.toBeUndefined()
+    expect((statusMsg!.payload as { question?: string; message?: string }).question).toBe('Tell me about caching.')
+    expect((statusMsg!.payload as { question?: string; message?: string }).message).toBe('question generated')
+  })
+
+  test('forwards TopicDrill result to Orchestrator when feedback is non-empty', async () => {
     queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
       sessionId: 'ipl-2',
       feedback: {
@@ -88,5 +119,24 @@ describe('InterviewPrepLead', () => {
     expect(msg).not.toBeNull()
     expect(msg!.from_agent).toBe(AgentRole.INTERVIEW_PREP_LEAD)
     expect(msg!.type).toBe(MessageType.RESULT)
+  })
+
+  test('does NOT forward to Orchestrator on question-only result (empty feedback)', async () => {
+    queue.send(AgentRole.TOPIC_DRILL, AgentRole.INTERVIEW_PREP_LEAD, MessageType.RESULT, {
+      sessionId: 'ipl-3',
+      feedback: {
+        question: 'What is a TCP handshake?',
+        feedback: '',
+        clarity: 'strong',
+        specificity: 'strong',
+      },
+    } satisfies TopicDrillResultPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(200)
+    await agent.stop()
+    await runPromise
+
+    expect(queue.receive(AgentRole.ORCHESTRATOR)).toBeNull()
   })
 })

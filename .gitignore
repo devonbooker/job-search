@@ -2,4 +2,10 @@ node_modules/
 dist/
 .env
 *.db
+*.db-shm
+*.db-wal
+.session-token
 .superpowers/
+.claude/
+.playwright-mcp/
+*.png

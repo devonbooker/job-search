@@ -6,9 +6,6 @@ describe('postgres', () => {
     await runMigrations()
   })
 
-  afterAll(async () => {
-    await pool.end()
-  })
 
   test('migrations table exists after runMigrations', async () => {
     const { rows } = await pool.query(

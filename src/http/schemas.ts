@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import type { IntakeDispatchPayload, ApproveResumePayload, StartInterviewPayload } from '../agents/types'
+import type { IntakeDispatchPayload, SelectTitlesPayload, ApproveResumePayload, StartInterviewPayload } from '../agents/types'
 
 export const intakeBody = z.object({
   goals: z.string().min(1),
@@ -9,17 +9,20 @@ export const intakeBody = z.object({
 })
 
 export type IntakeBody = z.infer<typeof intakeBody>
-
-// Compile-time check that schema matches dispatch minus sessionId
 const _intakeCheck: Omit<IntakeDispatchPayload, 'sessionId'> = {} as IntakeBody
 void _intakeCheck
 
-export const approveBody = z.object({
+export const selectTitlesBody = z.object({
   targetTitles: z.array(z.string()).min(1),
 })
-export type ApproveBody = z.infer<typeof approveBody>
-const _approveCheck: Omit<ApproveResumePayload, 'sessionId'> = {} as ApproveBody
-void _approveCheck
+export type SelectTitlesBody = z.infer<typeof selectTitlesBody>
+const _selectTitlesCheck: Omit<SelectTitlesPayload, 'sessionId'> = {} as SelectTitlesBody
+void _selectTitlesCheck
+
+export const approveResumeBody = z.object({})
+export type ApproveResumeBody = z.infer<typeof approveResumeBody>
+const _approveResumeCheck: Omit<ApproveResumePayload, 'sessionId'> = {} as ApproveResumeBody
+void _approveResumeCheck
 
 export const interviewBody = z.object({
   resumeSections: z.array(z.object({

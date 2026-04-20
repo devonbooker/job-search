@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import { randomUUID } from 'crypto'
 import type { HttpApiAgent } from '../http-api-agent'
-import { intakeBody, approveBody, interviewBody } from '../schemas'
+import { intakeBody, selectTitlesBody, approveResumeBody, interviewBody } from '../schemas'
 
 export function mountSessionRoutes(app: Hono, agent: HttpApiAgent): void {
   app.post('/sessions', async (c) => {
@@ -21,12 +21,21 @@ export function mountSessionRoutes(app: Hono, agent: HttpApiAgent): void {
     return c.json(snap)
   })
 
-  app.post('/sessions/:id/approve', async (c) => {
+  app.post('/sessions/:id/select-titles', async (c) => {
     const sessionId = c.req.param('id')
     const raw = await c.req.json().catch(() => null)
-    const parsed = approveBody.safeParse(raw)
+    const parsed = selectTitlesBody.safeParse(raw)
     if (!parsed.success) return c.json({ error: 'invalid body', details: parsed.error.flatten() }, 400)
     agent.sendCommand(sessionId, { sessionId, ...parsed.data })
+    return c.json({ ok: true })
+  })
+
+  app.post('/sessions/:id/approve-resume', async (c) => {
+    const sessionId = c.req.param('id')
+    const raw = await c.req.json().catch(() => ({}))
+    const parsed = approveResumeBody.safeParse(raw ?? {})
+    if (!parsed.success) return c.json({ error: 'invalid body', details: parsed.error.flatten() }, 400)
+    agent.sendCommand(sessionId, { sessionId })
     return c.json({ ok: true })
   })
 

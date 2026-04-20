@@ -59,15 +59,13 @@ describe('ProfileBuilder', () => {
     expect(payload.profile.goals).toBe(mockProfile.goals)
   })
 
-  test('retries if Claude returns invalid JSON', async () => {
+  test('emits ERROR to HTTP_API and acks if Claude returns invalid JSON', async () => {
     let callCount = 0
-    const validProfile = { goals: 'g', experience: 'e', preferences: 'p', resumeRaw: null }
     const anthropic = {
       messages: {
         create: mock(async () => {
           callCount++
-          const text = callCount === 1 ? 'not json' : JSON.stringify(validProfile)
-          return { content: [{ type: 'text', text }] }
+          return { content: [{ type: 'text', text: 'not json' }] }
         }),
       },
     } as unknown as Anthropic
@@ -83,13 +81,18 @@ describe('ProfileBuilder', () => {
     } satisfies ProfileBuilderDispatchPayload)
 
     const runPromise = agent.run()
-    await Bun.sleep(500)
+    await Bun.sleep(300)
     await agent.stop()
     await runPromise
 
-    expect(callCount).toBeGreaterThanOrEqual(2)
-    const result = queue.receive(AgentRole.INTAKE_LEAD)
-    expect(result).not.toBeNull()
+    expect(callCount).toBe(1)
+    expect(queue.receive(AgentRole.INTAKE_LEAD)).toBeNull()
+    expect(queue.receive(AgentRole.PROFILE_BUILDER)).toBeNull()
+
+    const errMsg = queue.receive(AgentRole.HTTP_API)
+    expect(errMsg).not.toBeNull()
+    expect(errMsg!.type).toBe(MessageType.ERROR)
+    expect((errMsg!.payload as { sessionId: string }).sessionId).toBe('pb-2')
   })
 
   test('includes resumeRaw in Claude prompt when provided', async () => {

@@ -44,6 +44,8 @@ export interface JobTitleResult {
   title: string
   description: string
   relevanceReason: string
+  avgSalaryUsd?: number
+  openingsCount?: number
 }
 
 export interface SkillsResult {
@@ -79,8 +81,13 @@ export interface IntakeDispatchPayload {
   resumeRaw?: string
 }
 
-// Sent after user approves resume in UI; triggers job search
+// Sent after user approves resume in UI; triggers job search using stored targetTitles
 export interface ApproveResumePayload {
+  sessionId: string
+}
+
+// Sent after user picks target titles on Research page; triggers resume build
+export interface SelectTitlesPayload {
   sessionId: string
   targetTitles: string[]
 }

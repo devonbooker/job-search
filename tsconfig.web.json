@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest/globals"],
+    "rootDir": "./src",
+    "outDir": "./dist/web-tsc"
+  },
+  "include": ["src/web/**/*", "tests/web/**/*"]
+}

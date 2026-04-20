@@ -10,6 +10,7 @@ import {
   type ResumeSection,
 } from '../types'
 import { SONNET_MODEL } from '../constants'
+import { parseClaudeJson } from '../json-extract'
 
 const SYSTEM_PROMPT = `You are an expert resume writer. Build a tailored resume that maps the user's experience to the target job titles and required skills.
 Respond with ONLY a JSON array of resume sections:
@@ -47,18 +48,13 @@ export class ResumeBuilder extends BaseAgent {
 
     const response = await this.anthropic.messages.create({
       model: this.model,
-      max_tokens: 2048,
+      max_tokens: 4096,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userContent }],
     })
 
     const text = response.content.find(b => b.type === 'text')?.text ?? ''
-    let sections: ResumeSection[]
-    try {
-      sections = JSON.parse(text) as ResumeSection[]
-    } catch {
-      throw new Error(`ResumeBuilder: Claude returned invalid JSON: ${text.slice(0, 100)}`)
-    }
+    const sections = parseClaudeJson<ResumeSection[]>(text)
 
     this.send(AgentRole.RESUME_LEAD, MessageType.RESULT, {
       sessionId: dispatch.sessionId,

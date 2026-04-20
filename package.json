@@ -4,16 +4,31 @@
   "private": true,
   "scripts": {
     "dev": "bun run --watch src/main.ts",
-    "test": "bun test"
+    "dev:web": "vite",
+    "build:web": "vite build",
+    "test": "bun test tests/agents tests/db tests/http tests/integration && vitest run",
+    "test:web": "vitest run"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "hono": "^4.12.14",
     "pg": "^8.13.0",
-    "zod": "^4.3.6"
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5",
+    "react-router-dom": "^7.14.1",
+    "zod": "^4.3.6",
+    "zustand": "^5.0.12"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/pg": "^8.11.0",
-    "typescript": "^5.0.0"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
+    "jsdom": "^29.0.2",
+    "typescript": "^5.0.0",
+    "vite": "^8.0.8",
+    "vitest": "^4.1.4"
   }
 }
