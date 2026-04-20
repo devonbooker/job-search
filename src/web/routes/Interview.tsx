@@ -3,7 +3,7 @@ import { api } from '../api'
 import { useSessionStore } from '../state/session'
 
 export function Interview() {
-  const { sessionId, resumeSections, skillsByTitle, interviewFeedback, interviewQuestion } = useSessionStore()
+  const { sessionId, resumeSections, skillsByTitle, interviewFeedback, interviewQuestion, setInterviewQuestion } = useSessionStore()
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null)
   const [answer, setAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -16,6 +16,8 @@ export function Interview() {
 
   async function pick(topic: string) {
     if (!sessionId || !resumeSections) return
+    setInterviewQuestion('')
+    setAnswer('')
     setSelectedTopic(topic)
     setSubmitting(true)
     try {
@@ -32,7 +34,9 @@ export function Interview() {
   }
 
   function reset() {
-    setSelectedTopic(null); setAnswer('')
+    setSelectedTopic(null)
+    setAnswer('')
+    setInterviewQuestion('')
   }
 
   if (!resumeSections) return <p>Finish the resume first.</p>

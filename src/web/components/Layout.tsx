@@ -16,7 +16,7 @@ export function Layout({ children }: { children: ReactNode }) {
         <GatedLink to="/jobs" locked={false} lockedReason="">Jobs</GatedLink>
         <GatedLink to="/interview" locked={!resumeSections} lockedReason="Approve resume first">Interview</GatedLink>
       </aside>
-      <main style={{ flex: 1, padding: 20 }}>{children}</main>
+      <main style={{ flex: 1, padding: '20px 20px 64px' }}>{children}</main>
       <ActivityBar />
     </div>
   )

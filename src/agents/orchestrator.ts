@@ -171,7 +171,8 @@ export class Orchestrator extends BaseAgent {
       sessionId,
       agent: AgentRole.ORCHESTRATOR,
       error: `Unknown session: ${sessionId}`,
-    } satisfies ErrorPayload)
+      message: `Unknown session: ${sessionId} (server likely restarted - start a new intake)`,
+    } as ErrorPayload & { message: string })
   }
 
   getSessionState(sessionId: string): SessionState | undefined {
