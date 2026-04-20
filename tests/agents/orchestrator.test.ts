@@ -9,6 +9,7 @@ import {
   type IntakeResultPayload,
   type ResearchResultPayload,
   type ApproveResumePayload,
+  type SelectTitlesPayload,
   type StartInterviewPayload,
 } from '../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
@@ -89,7 +90,8 @@ describe('Orchestrator', () => {
     expect(msg!.from_agent).toBe(AgentRole.ORCHESTRATOR)
   })
 
-  test('routes ResearchLead result to ResumeLead', async () => {
+  test('research lead RESULT transitions session to awaiting_title_selection (no resume dispatch)', async () => {
+    // Seed session via intake
     queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
       sessionId: 'ses-3',
       goals: 'security',
@@ -117,35 +119,68 @@ describe('Orchestrator', () => {
     await orchestrator.stop()
     await runPromise
 
-    const msg = queue.receive(AgentRole.RESUME_LEAD)
-    expect(msg).not.toBeNull()
-    expect(msg!.from_agent).toBe(AgentRole.ORCHESTRATOR)
+    expect(queue.receive(AgentRole.RESUME_LEAD)).toBeNull()
+    const persisted = await store.load('ses-3')
+    expect(persisted?.stage).toBe('awaiting_title_selection')
   })
 
-  test('routes approve-resume dispatch to JobSearchLead', async () => {
-    // Seed session via intake so Orchestrator knows ses-4 exists
+  test('SelectTitles dispatch transitions to building_resume and dispatches RESUME_LEAD with selected titles only', async () => {
+    // Pre-seed a session at awaiting_title_selection
+    await store.save('ses-st', {
+      stage: 'awaiting_title_selection',
+      profile: { goals: 'g', experience: 'e', preferences: 'p', resumeRaw: null },
+      research: {
+        sessionId: 'ses-st',
+        jobTitles: [
+          { title: 'A', description: '', relevanceReason: '' },
+          { title: 'B', description: '', relevanceReason: '' },
+          { title: 'C', description: '', relevanceReason: '' },
+        ],
+        skillsByTitle: [],
+      },
+    }, 'awaiting_title_selection')
+
     queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
-      sessionId: 'ses-4',
-      goals: 'security',
-      experience: '3 years',
-      preferences: 'on-site',
-    } satisfies IntakeDispatchPayload)
+      sessionId: 'ses-st',
+      targetTitles: ['A', 'C'],
+    } satisfies SelectTitlesPayload)
 
     const runPromise = orchestrator.run()
-    await Bun.sleep(150)
-
-    queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
-      sessionId: 'ses-4',
-      targetTitles: ['Security Engineer'],
-    } satisfies ApproveResumePayload)
-
     await Bun.sleep(200)
     await orchestrator.stop()
     await runPromise
 
-    const msg = queue.receive(AgentRole.JOB_SEARCH_LEAD)
-    expect(msg).not.toBeNull()
-    expect(msg!.from_agent).toBe(AgentRole.ORCHESTRATOR)
+    const dispatched = queue.receive(AgentRole.RESUME_LEAD)
+    expect(dispatched).not.toBeNull()
+    const payload = dispatched!.payload as { targetTitles: string[] }
+    expect(payload.targetTitles).toEqual(['A', 'C'])
+
+    const persisted = await store.load('ses-st')
+    expect(persisted?.stage).toBe('building_resume')
+    expect(persisted?.targetTitles).toEqual(['A', 'C'])
+  })
+
+  test('ApproveResume dispatch (no targetTitles in payload) dispatches JOB_SEARCH_LEAD with stored titles', async () => {
+    // Pre-seed session at awaiting_resume_approval with stored targetTitles
+    await store.save('ses-4', {
+      stage: 'awaiting_resume_approval',
+      profile: { goals: 'g', experience: 'e', preferences: 'p', resumeRaw: null },
+      targetTitles: ['Security Engineer', 'DevOps Engineer'],
+    }, 'awaiting_resume_approval')
+
+    queue.send(AgentRole.HTTP_API, AgentRole.ORCHESTRATOR, MessageType.DISPATCH, {
+      sessionId: 'ses-4',
+    } satisfies ApproveResumePayload)
+
+    const runPromise = orchestrator.run()
+    await Bun.sleep(200)
+    await orchestrator.stop()
+    await runPromise
+
+    const dispatched = queue.receive(AgentRole.JOB_SEARCH_LEAD)
+    expect(dispatched).not.toBeNull()
+    const payload = dispatched!.payload as { targetTitles: string[] }
+    expect(payload.targetTitles).toEqual(['Security Engineer', 'DevOps Engineer'])
   })
 
   test('routes start-interview dispatch to InterviewPrepLead', async () => {

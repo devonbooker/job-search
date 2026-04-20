@@ -7,6 +7,7 @@ import {
   type Message,
   type IntakeDispatchPayload,
   type ApproveResumePayload,
+  type SelectTitlesPayload,
   type StartInterviewPayload,
   type IntakeResultPayload,
   type ResearchResultPayload,
@@ -29,6 +30,7 @@ export interface SessionState {
   profile?: UserProfile
   research?: ResearchResultPayload
   resume?: ResumeResultPayload
+  targetTitles?: string[]
 }
 
 export class Orchestrator extends BaseAgent {
@@ -63,10 +65,49 @@ export class Orchestrator extends BaseAgent {
       }
 
       if (Array.isArray(p.targetTitles) && !('selectedTopic' in p)) {
+        // SelectTitles - happens at awaiting_title_selection; advances to building_resume
+        const payload = p as unknown as SelectTitlesPayload
+        const session = this.sessions.get(payload.sessionId)
+        if (!session) {
+          this.emitUnknownSessionError(payload.sessionId)
+          return
+        }
+        if (session.stage !== 'awaiting_title_selection') {
+          console.warn(`[ORCHESTRATOR] SelectTitles for ${payload.sessionId} in wrong stage ${session.stage}; ignoring`)
+          return
+        }
+        if (!session.research || !session.profile) {
+          console.error(`[ORCHESTRATOR] missing research/profile for ${payload.sessionId} at SelectTitles`)
+          return
+        }
+        session.targetTitles = payload.targetTitles
+        session.stage = 'building_resume'
+        await this.store.save(payload.sessionId, session, 'building_resume')
+        this.emitStatus(payload.sessionId, 'building_resume')
+        this.send(AgentRole.RESUME_LEAD, MessageType.DISPATCH, {
+          sessionId: payload.sessionId,
+          profile: session.profile,
+          jobTitles: session.research.jobTitles,
+          skillsByTitle: session.research.skillsByTitle,
+          targetTitles: payload.targetTitles,
+        } satisfies ResumeDispatchPayload)
+        return
+      }
+
+      if ('sessionId' in p && Object.keys(p).length === 1) {
+        // ApproveResume - empty body besides sessionId; happens at awaiting_resume_approval
         const payload = p as unknown as ApproveResumePayload
         const session = this.sessions.get(payload.sessionId)
         if (!session) {
           this.emitUnknownSessionError(payload.sessionId)
+          return
+        }
+        if (session.stage !== 'awaiting_resume_approval') {
+          console.warn(`[ORCHESTRATOR] ApproveResume for ${payload.sessionId} in wrong stage ${session.stage}; ignoring`)
+          return
+        }
+        if (!session.targetTitles || session.targetTitles.length === 0) {
+          console.error(`[ORCHESTRATOR] no targetTitles stored for ${payload.sessionId} at ApproveResume`)
           return
         }
         session.stage = 'searching_jobs'
@@ -74,7 +115,7 @@ export class Orchestrator extends BaseAgent {
         this.emitStatus(payload.sessionId, 'searching_jobs')
         this.send(AgentRole.JOB_SEARCH_LEAD, MessageType.DISPATCH, {
           sessionId: payload.sessionId,
-          targetTitles: payload.targetTitles,
+          targetTitles: session.targetTitles,
         } satisfies JobSearchDispatchPayload)
         return
       }
@@ -120,21 +161,10 @@ export class Orchestrator extends BaseAgent {
           const session = this.sessions.get(result.sessionId)
           if (!session) return
           session.research = result
-          session.stage = 'building_resume'
-          await this.store.save(result.sessionId, session, 'building_resume')
-          this.emitStatus(result.sessionId, 'building_resume')
+          session.stage = 'awaiting_title_selection'
+          await this.store.save(result.sessionId, session, 'awaiting_title_selection')
+          this.emitStatus(result.sessionId, 'awaiting_title_selection')
           this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
-          if (!session.profile) {
-            console.error(`[ORCHESTRATOR] no profile for session ${result.sessionId}`)
-            return
-          }
-          this.send(AgentRole.RESUME_LEAD, MessageType.DISPATCH, {
-            sessionId: result.sessionId,
-            profile: session.profile,
-            jobTitles: result.jobTitles,
-            skillsByTitle: result.skillsByTitle,
-            targetTitles: result.jobTitles.map(j => j.title),
-          } satisfies ResumeDispatchPayload)
           break
         }
         case AgentRole.RESUME_LEAD: {
