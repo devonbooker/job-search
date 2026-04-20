@@ -1,12 +1,13 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import { api } from '../api'
 import { useSessionStore } from '../state/session'
 
 export function Interview() {
-  const { sessionId, resumeSections, skillsByTitle, interviewFeedback, interviewQuestion, setInterviewQuestion } = useSessionStore()
+  const { sessionId, resumeSections, skillsByTitle, interviewFeedback, interviewQuestion, setInterviewQuestion, setInterviewFeedback } = useSessionStore()
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null)
   const [answer, setAnswer] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const inFlight = useRef(false)
 
   const topics = useMemo(() => {
     const fromSections = resumeSections?.map(s => s.title) ?? []
@@ -15,28 +16,38 @@ export function Interview() {
   }, [resumeSections, skillsByTitle])
 
   async function pick(topic: string) {
-    if (!sessionId || !resumeSections) return
+    if (!sessionId || !resumeSections || inFlight.current) return
+    inFlight.current = true
     setInterviewQuestion('')
+    setInterviewFeedback(undefined)
     setAnswer('')
     setSelectedTopic(topic)
     setSubmitting(true)
     try {
       await api.interview(sessionId, { resumeSections, selectedTopic: topic })
-    } finally { setSubmitting(false) }
+    } finally {
+      setSubmitting(false)
+      inFlight.current = false
+    }
   }
 
   async function submit() {
-    if (!sessionId || !resumeSections || !selectedTopic || !interviewQuestion) return
+    if (!sessionId || !resumeSections || !selectedTopic || !interviewQuestion || inFlight.current) return
+    inFlight.current = true
     setSubmitting(true)
     try {
       await api.interview(sessionId, { resumeSections, selectedTopic, userAnswer: answer, question: interviewQuestion })
-    } finally { setSubmitting(false) }
+    } finally {
+      setSubmitting(false)
+      inFlight.current = false
+    }
   }
 
   function reset() {
     setSelectedTopic(null)
     setAnswer('')
     setInterviewQuestion('')
+    setInterviewFeedback(undefined)
   }
 
   if (!resumeSections) return <p>Finish the resume first.</p>

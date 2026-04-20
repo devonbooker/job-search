@@ -17,6 +17,7 @@ interface State {
   events: AgentEvent[]
   setSessionId(id: string | null): void
   setInterviewQuestion(q: string): void
+  setInterviewFeedback(f: InterviewFeedback | undefined): void
   setFromSnapshot(snap: Snapshot): void
   setFromEvent(evt: AgentEvent): void
   reset(): void
@@ -30,6 +31,7 @@ export const useSessionStore = create<State>((set) => ({
   events: [],
   setSessionId: (id) => set({ sessionId: id }),
   setInterviewQuestion: (q) => set({ interviewQuestion: q }),
+  setInterviewFeedback: (f) => set({ interviewFeedback: f }),
   setFromSnapshot: (snap) => set({
     sessionId: snap.sessionId,
     stage: snap.stage,

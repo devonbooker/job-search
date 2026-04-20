@@ -164,10 +164,9 @@ export class Orchestrator extends BaseAgent {
           const session = this.sessions.get(result.sessionId)
           if (!session) return
           session.stage = 'interview_prep'
+          await this.store.save(result.sessionId, session, 'interview_prep')
           this.emitStatus(result.sessionId, 'interview_prep')
           this.send(AgentRole.HTTP_API, MessageType.RESULT, result)
-          this.sessions.delete(result.sessionId)
-          await this.store.delete(result.sessionId)
           break
         }
         default:
