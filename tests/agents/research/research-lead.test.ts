@@ -9,6 +9,7 @@ import {
   type JobTitleResearchResultPayload,
   type SkillsMarketResearchResultPayload,
   type Message,
+  type JobTitleResult,
 } from '../../../src/agents/types'
 import { unlinkSync, existsSync } from 'fs'
 import { pool, runMigrations } from '../../../src/db/postgres'
@@ -30,7 +31,14 @@ describe('ResearchLead', () => {
   beforeEach(async () => {
     await pool.query('TRUNCATE TABLE research_lead_sessions')
     queue = new MessageQueue(TEST_DB)
-    agent = new ResearchLead(queue, new Anthropic({ apiKey: 'test-key' }), store)
+    agent = new ResearchLead(
+      queue,
+      new Anthropic({ apiKey: 'test-key' }),
+      store,
+      'test-app-id',
+      'test-app-key',
+      globalThis.fetch,
+    )
   })
 
   afterEach(async () => {
@@ -135,5 +143,96 @@ describe('ResearchLead', () => {
     const payload = msg!.payload as { jobTitles: unknown[]; skillsByTitle: unknown[] }
     expect(payload.jobTitles).toHaveLength(1)
     expect(payload.skillsByTitle).toHaveLength(1)
+  })
+
+  test('attaches Adzuna stats to each title before dispatching SkillsMarketResearch', async () => {
+    const fakeFetch: typeof fetch = async (input) => {
+      const url = String(input)
+      const what = decodeURIComponent(new URL(url).searchParams.get('what') ?? '')
+      if (what === 'Security Engineer') {
+        return new Response(JSON.stringify({
+          count: 1234,
+          results: [
+            { salary_min: 120000, salary_max: 160000 },
+            { salary_min: 100000, salary_max: 140000 },
+          ],
+        }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ count: 50, results: [] }), { status: 200 })
+    }
+
+    agent = new ResearchLead(queue, new Anthropic({ apiKey: 'test-key' }), store, 'id', 'key', fakeFetch)
+
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, {
+      sessionId: 'rl-stats-1',
+      profile: { goals: 'g', experience: 'e', preferences: 'p', resumeRaw: null },
+    } satisfies ResearchDispatchPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(100)
+
+    queue.send(AgentRole.JOB_TITLE_RESEARCH, AgentRole.RESEARCH_LEAD, MessageType.RESULT, {
+      sessionId: 'rl-stats-1',
+      jobTitles: [
+        { title: 'Security Engineer', description: 'd', relevanceReason: 'r' },
+        { title: 'DevOps Engineer', description: 'd2', relevanceReason: 'r2' },
+      ],
+    } satisfies JobTitleResearchResultPayload)
+
+    await Bun.sleep(200)
+    await agent.stop()
+    await runPromise
+
+    const skillsDispatch = queue.receive(AgentRole.SKILLS_MARKET_RESEARCH)
+    expect(skillsDispatch).not.toBeNull()
+    const payload = skillsDispatch!.payload as { jobTitles: JobTitleResult[] }
+    const sec = payload.jobTitles.find(t => t.title === 'Security Engineer')!
+    expect(sec.openingsCount).toBe(1234)
+    expect(sec.avgSalaryUsd).toBe(130000) // mean of (140000, 120000)
+    const dev = payload.jobTitles.find(t => t.title === 'DevOps Engineer')!
+    expect(dev.openingsCount).toBe(50)
+    expect(dev.avgSalaryUsd).toBeUndefined()
+  })
+
+  test('gracefully degrades when Adzuna call for a title returns 422', async () => {
+    const fakeFetch: typeof fetch = async (input) => {
+      const url = String(input)
+      const what = decodeURIComponent(new URL(url).searchParams.get('what') ?? '')
+      if (what === 'Security Engineer') {
+        return new Response('Unprocessable', { status: 422 })
+      }
+      return new Response(JSON.stringify({ count: 99, results: [{ salary_min: 80000, salary_max: 120000 }] }), { status: 200 })
+    }
+
+    agent = new ResearchLead(queue, new Anthropic({ apiKey: 'test-key' }), store, 'id', 'key', fakeFetch)
+
+    queue.send(AgentRole.ORCHESTRATOR, AgentRole.RESEARCH_LEAD, MessageType.DISPATCH, {
+      sessionId: 'rl-stats-2',
+      profile: { goals: 'g', experience: 'e', preferences: 'p', resumeRaw: null },
+    } satisfies ResearchDispatchPayload)
+
+    const runPromise = agent.run()
+    await Bun.sleep(100)
+
+    queue.send(AgentRole.JOB_TITLE_RESEARCH, AgentRole.RESEARCH_LEAD, MessageType.RESULT, {
+      sessionId: 'rl-stats-2',
+      jobTitles: [
+        { title: 'Security Engineer', description: 'd', relevanceReason: 'r' },
+        { title: 'Backend Engineer', description: 'd2', relevanceReason: 'r2' },
+      ],
+    } satisfies JobTitleResearchResultPayload)
+
+    await Bun.sleep(200)
+    await agent.stop()
+    await runPromise
+
+    const skillsDispatch = queue.receive(AgentRole.SKILLS_MARKET_RESEARCH)
+    const payload = skillsDispatch!.payload as { jobTitles: JobTitleResult[] }
+    const sec = payload.jobTitles.find(t => t.title === 'Security Engineer')!
+    expect(sec.avgSalaryUsd).toBeUndefined()
+    expect(sec.openingsCount).toBeUndefined()
+    const back = payload.jobTitles.find(t => t.title === 'Backend Engineer')!
+    expect(back.openingsCount).toBe(99)
+    expect(back.avgSalaryUsd).toBe(100000)
   })
 })
