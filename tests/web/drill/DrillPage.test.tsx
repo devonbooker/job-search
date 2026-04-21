@@ -187,7 +187,78 @@ describe('DrillPage', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Model hiccuped/i)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /Retry/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /Continue to retry/i })).toBeInTheDocument()
+    })
+  })
+
+  test('Finish button triggers finishDrill and renders verdict', async () => {
+    vi.mocked(getDrillSession).mockResolvedValue({
+      ok: true,
+      data: makeSnapshot({ turnsCompleted: 4 }),
+    })
+    vi.mocked(finishDrill).mockResolvedValue({
+      ok: true,
+      data: {
+        verdict: {
+          target_role: 'Backend Engineer',
+          project_drilled: 'Go microservice',
+          solid: ['Strong goroutine understanding'],
+          weak: [],
+          interviewer_verdict: 'Solid candidate',
+          overall: 'Solid',
+          overall_summary: 'Good overall',
+        },
+      },
+    })
+
+    renderDrillPage()
+    await waitFor(() => screen.getByText('What is a goroutine?'))
+
+    fireEvent.click(screen.getByRole('button', { name: /Finish drill/i }))
+
+    await waitFor(() => {
+      expect(finishDrill).toHaveBeenCalledWith('sess-1')
+      expect(screen.getByText('SOLID')).toBeInTheDocument()
+      expect(screen.getByText('Backend Engineer')).toBeInTheDocument()
+    })
+  })
+
+  test('completed:true auto-finish after submit renders verdict without user clicking Finish', async () => {
+    vi.mocked(getDrillSession).mockResolvedValue({
+      ok: true,
+      data: makeSnapshot({ turnsCompleted: 6 }),
+    })
+    vi.mocked(submitAnswer).mockResolvedValue({
+      ok: true,
+      data: { nextQuestion: null, completed: true, turnsCompleted: 7 },
+    })
+    vi.mocked(finishDrill).mockResolvedValue({
+      ok: true,
+      data: {
+        verdict: {
+          target_role: 'Cloud Security Engineer',
+          project_drilled: 'WAF project',
+          solid: ['Good security fundamentals'],
+          weak: ['Needs more Kubernetes depth'],
+          interviewer_verdict: 'Hire with reservations',
+          overall: 'Borderline',
+          overall_summary: 'Mixed bag overall',
+        },
+      },
+    })
+
+    renderDrillPage()
+    await waitFor(() => screen.getByText('What is a goroutine?'))
+
+    fireEvent.change(screen.getByPlaceholderText(/Type your answer/i), {
+      target: { value: 'My final answer' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Submit/i }))
+
+    await waitFor(() => {
+      expect(finishDrill).toHaveBeenCalledWith('sess-1')
+      expect(screen.getByText('BORDERLINE')).toBeInTheDocument()
+      expect(screen.getByText('Cloud Security Engineer')).toBeInTheDocument()
     })
   })
 })

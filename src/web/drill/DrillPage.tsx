@@ -98,66 +98,76 @@ export function DrillPage() {
     setState({ phase: 'drilling', snapshot: snap, currentQuestion, completedEntries })
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function submitAnswerText(text: string) {
     if (!sessionId || state.phase !== 'drilling') return
-    const text = answer.trim()
-    if (!text) return
 
     setSubmitting(true)
     setSubmitError(null)
     setRetryText(null)
 
-    const result = await submitAnswer(sessionId, text)
-    setSubmitting(false)
+    try {
+      const result = await submitAnswer(sessionId, text)
 
-    if (!result.ok) {
-      if (result.status === 409) {
-        // Session is complete — re-fetch to get verdict
-        fetchedRef.current = false
-        setState({ phase: 'loading' })
-        const snap = await getDrillSession(sessionId)
-        if (snap.ok) {
-          initFromSnapshot(snap.data)
+      if (!result.ok) {
+        if (result.status === 409) {
+          // Session is complete — re-fetch to get verdict
+          fetchedRef.current = false
+          setState({ phase: 'loading' })
+          const snap = await getDrillSession(sessionId)
+          if (snap.ok) {
+            initFromSnapshot(snap.data)
+          } else {
+            setState({ phase: 'error', message: snap.error ?? snap.message ?? 'Failed to load session' })
+          }
+          return
         }
+        if (result.status === 502) {
+          // Model hiccup — show retry
+          setRetryText(text)
+          setSubmitError("Model hiccuped - click Continue to retry")
+          return
+        }
+        setSubmitError(result.message ?? result.error)
         return
       }
-      if (result.status === 502) {
-        // Model hiccup — show retry
-        setRetryText(text)
-        setSubmitError("Model hiccuped - click Continue to retry")
+
+      const { nextQuestion, completed, turnsCompleted } = result.data
+      const currentEntry = state.snapshot.transcript.find(
+        e => e.question === state.currentQuestion && e.answer == null
+      )
+      const currentTurn = currentEntry?.turn ?? state.completedEntries.length + 1
+
+      const newEntry: DrillTranscriptEntry = {
+        turn: currentTurn,
+        question: state.currentQuestion,
+        answer: text,
+      }
+      const newCompleted = [...state.completedEntries, newEntry]
+
+      if (completed || nextQuestion === null) {
+        // Auto-finish
+        await handleFinishInternal(sessionId, newCompleted)
         return
       }
-      setSubmitError(result.message ?? result.error)
-      return
+
+      setState({
+        phase: 'drilling',
+        snapshot: { ...state.snapshot, turnsCompleted },
+        currentQuestion: nextQuestion,
+        completedEntries: newCompleted,
+      })
+      setAnswer('')
+    } finally {
+      setSubmitting(false)
     }
+  }
 
-    const { nextQuestion, completed, turnsCompleted } = result.data
-    const currentEntry = state.snapshot.transcript.find(
-      e => e.question === state.currentQuestion && e.answer == null
-    )
-    const currentTurn = currentEntry?.turn ?? state.completedEntries.length + 1
-
-    const newEntry: DrillTranscriptEntry = {
-      turn: currentTurn,
-      question: state.currentQuestion,
-      answer: text,
-    }
-    const newCompleted = [...state.completedEntries, newEntry]
-
-    if (completed || nextQuestion === null) {
-      // Auto-finish
-      await handleFinishInternal(sessionId, newCompleted)
-      return
-    }
-
-    setState({
-      phase: 'drilling',
-      snapshot: { ...state.snapshot, turnsCompleted },
-      currentQuestion: nextQuestion,
-      completedEntries: newCompleted,
-    })
-    setAnswer('')
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!sessionId || state.phase !== 'drilling') return
+    const text = answer.trim()
+    if (!text) return
+    await submitAnswerText(text)
   }
 
   async function handleFinishInternal(sid: string, completedEntries: DrillTranscriptEntry[]) {
@@ -178,15 +188,18 @@ export function DrillPage() {
     if (!sessionId || state.phase !== 'drilling') return
     setFinishing(true)
     setSubmitError(null)
-    await handleFinishInternal(sessionId, state.completedEntries)
-    setFinishing(false)
+    try {
+      await handleFinishInternal(sessionId, state.completedEntries)
+    } finally {
+      setFinishing(false)
+    }
   }
 
   async function handleRetry() {
     if (!retryText || !sessionId) return
-    setAnswer(retryText)
-    setRetryText(null)
-    setSubmitError(null)
+    const text = retryText
+    setAnswer(text)
+    await submitAnswerText(text)
   }
 
   // ─── Render phases ──────────────────────────────────────────────────────────

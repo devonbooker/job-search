@@ -39,7 +39,7 @@ export function InputPage() {
   }
 
   return (
-    <div style={{ maxWidth: 700, margin: '40px auto', padding: '0 20px', fontFamily: 'monospace' }}>
+    <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', fontFamily: 'monospace' }}>
       <h2 style={{ marginBottom: 8 }}>Interview Drill</h2>
       <p style={{ color: 'var(--muted)', marginBottom: 24, fontFamily: 'system-ui' }}>
         Paste your resume and the job description. The drill simulates a real technical interview.
