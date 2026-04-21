@@ -447,7 +447,7 @@ export async function finishSession(
 
   let rawResponse: string
   try {
-    rawResponse = await callModel(deps.anthropic, OPUS_MODEL, VERDICT_SYSTEM, context, 2048)
+    rawResponse = await callModel(deps.anthropic, OPUS_MODEL, VERDICT_SYSTEM, context, 8000)
   } catch (cause) {
     await appendEvent(
       {
