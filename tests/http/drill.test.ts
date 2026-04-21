@@ -116,7 +116,7 @@ describe('POST /drill/api/start', () => {
     const body = await res.json() as { error: string; message: string; sessionId: string }
     expect(body.error).toBe('drill_start_failed')
     expect(typeof body.message).toBe('string')
-    expect(typeof body.sessionId).toBe('string')
+    expect(body.sessionId.length).toBeGreaterThan(10)
   })
 })
 
@@ -216,7 +216,7 @@ describe('POST /drill/api/sessions/:id/answer', () => {
     expect(typeof body.completed).toBe('boolean')
   })
 
-  test('empty text: 400', async () => {
+  test('empty text: 400 with field=text', async () => {
     const app = makeApp(testFile)
 
     const startRes = await app.request('/drill/api/start', {
@@ -233,6 +233,9 @@ describe('POST /drill/api/sessions/:id/answer', () => {
       body: JSON.stringify({ text: '' }),
     })
     expect(res.status).toBe(400)
+    const body = await res.json() as { error: string; field: string }
+    expect(body.error).toBeTruthy()
+    expect(body.field).toBe('text')
   })
 
 })

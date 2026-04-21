@@ -34,27 +34,31 @@ export interface EngineDeps {
 
 export class DrillTurnError extends Error {
   readonly stage = 'drill' as const
+  readonly code: 'session_complete' | 'model_error' | 'parse_error'
   readonly sessionId: string
   readonly cause?: unknown
 
-  constructor(message: string, sessionId: string, cause?: unknown) {
+  constructor(message: string, init: { code: DrillTurnError['code']; sessionId: string; cause?: unknown }) {
     super(message)
     this.name = 'DrillTurnError'
-    this.sessionId = sessionId
-    this.cause = cause
+    this.code = init.code
+    this.sessionId = init.sessionId
+    this.cause = init.cause
   }
 }
 
 export class VerdictGenerationError extends Error {
   readonly stage = 'verdict' as const
+  readonly code: 'opus_error' | 'parse_error' | 'invalid_verdict'
   readonly sessionId: string
   readonly cause?: unknown
 
-  constructor(message: string, sessionId: string, cause?: unknown) {
+  constructor(message: string, init: { code: VerdictGenerationError['code']; sessionId: string; cause?: unknown }) {
     super(message)
     this.name = 'VerdictGenerationError'
-    this.sessionId = sessionId
-    this.cause = cause
+    this.code = init.code
+    this.sessionId = init.sessionId
+    this.cause = init.cause
   }
 }
 
@@ -234,7 +238,7 @@ export async function startSession(
       },
       ep,
     )
-    throw new DrillTurnError('Sonnet API call failed during startSession', sessionId, cause)
+    throw new DrillTurnError('Sonnet API call failed during startSession', { code: 'model_error', sessionId, cause })
   }
 
   let parsed: DrillTurnResponse
@@ -252,7 +256,7 @@ export async function startSession(
       },
       ep,
     )
-    throw new DrillTurnError('Failed to parse Sonnet response in startSession', sessionId, cause)
+    throw new DrillTurnError('Failed to parse Sonnet response in startSession', { code: 'parse_error', sessionId, cause })
   }
 
   // Write question event
@@ -302,7 +306,7 @@ export async function submitAnswer(
       },
       ep,
     )
-    throw new DrillTurnError('Cannot submit answer: session is complete', sessionId)
+    throw new DrillTurnError('Cannot submit answer: session is complete', { code: 'session_complete', sessionId })
   }
 
   // Count existing answer events to determine which turn we're completing
@@ -312,7 +316,7 @@ export async function submitAnswer(
   // Get the start event to reconstruct resume/JD for the user message
   const startEvent = events.find(e => e.event === 'start')
   if (!startEvent || startEvent.event !== 'start') {
-    throw new DrillTurnError('Session start event not found', sessionId)
+    throw new DrillTurnError('Session start event not found', { code: 'model_error', sessionId })
   }
 
   // Build prior transcript (all Q/A so far, excluding the current answer)
@@ -346,7 +350,7 @@ export async function submitAnswer(
       },
       ep,
     )
-    throw new DrillTurnError('Sonnet API call failed during submitAnswer', sessionId, cause)
+    throw new DrillTurnError('Sonnet API call failed during submitAnswer', { code: 'model_error', sessionId, cause })
   }
 
   let parsed: DrillTurnResponse
@@ -364,7 +368,7 @@ export async function submitAnswer(
       },
       ep,
     )
-    throw new DrillTurnError('Failed to parse Sonnet response in submitAnswer', sessionId, cause)
+    throw new DrillTurnError('Failed to parse Sonnet response in submitAnswer', { code: 'parse_error', sessionId, cause })
   }
 
   // Write answer event
@@ -450,7 +454,7 @@ export async function finishSession(
       },
       ep,
     )
-    throw new VerdictGenerationError('Opus API call failed during finishSession', sessionId, cause)
+    throw new VerdictGenerationError('Opus API call failed during finishSession', { code: 'opus_error', sessionId, cause })
   }
 
   let verdict: Verdict
@@ -468,7 +472,7 @@ export async function finishSession(
       },
       ep,
     )
-    throw new VerdictGenerationError('Failed to parse Opus verdict response', sessionId, cause)
+    throw new VerdictGenerationError('Failed to parse Opus verdict response', { code: 'parse_error', sessionId, cause })
   }
 
   // Validate the verdict constraints
@@ -485,7 +489,7 @@ export async function finishSession(
     )
     throw new VerdictGenerationError(
       'Verdict validation failed: "solid" must have at least 1 entry',
-      sessionId,
+      { code: 'invalid_verdict', sessionId },
     )
   }
 
@@ -502,7 +506,7 @@ export async function finishSession(
     )
     throw new VerdictGenerationError(
       'Verdict validation failed: "weak" must have at least 1 entry',
-      sessionId,
+      { code: 'invalid_verdict', sessionId },
     )
   }
 

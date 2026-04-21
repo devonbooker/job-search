@@ -315,8 +315,9 @@ describe('submitAnswer - completed session guard', () => {
     await finishSession(sessionId, deps)
 
     // Now attempt to submit an answer to the already-finished session
-    await expect(submitAnswer({ sessionId, answerText: 'Late answer' }, deps))
-      .rejects.toBeInstanceOf(DrillTurnError)
+    const thrown = await submitAnswer({ sessionId, answerText: 'Late answer' }, deps).catch(e => e)
+    expect(thrown).toBeInstanceOf(DrillTurnError)
+    expect((thrown as DrillTurnError).code).toBe('session_complete')
 
     const events = await getEvents(sessionId)
     const errorEvent = events.find(e => e.event === 'error' && e.message.includes('session is complete'))

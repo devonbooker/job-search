@@ -11,6 +11,18 @@ import {
   VerdictGenerationError,
 } from '../../drill/engine'
 
+// ─── Error codes ──────────────────────────────────────────────────────────────
+
+const ERROR_CODE = {
+  VALIDATION: 'validation_error',
+  SESSION_NOT_FOUND: 'session_not_found',
+  SESSION_COMPLETE: 'session_complete',
+  MINIMUM_TURNS_NOT_MET: 'minimum_turns_not_met',
+  DRILL_START_FAILED: 'drill_start_failed',
+  DRILL_TURN_FAILED: 'drill_turn_failed',
+  VERDICT_FAILED: 'verdict_failed',
+} as const
+
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
 const startBodySchema = z.object({
@@ -58,7 +70,7 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
       if (err instanceof DrillTurnError) {
         return c.json(
           {
-            error: 'drill_start_failed',
+            error: ERROR_CODE.DRILL_START_FAILED,
             message: 'Model hiccuped — please retry',
             sessionId: err.sessionId,
           },
@@ -78,19 +90,18 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
     const id = c.req.param('id')
     const userAgent = c.req.header('User-Agent') ?? ''
 
-    // Log the reopen signal before reading
-    await recordReopen(id, userAgent, deps)
-
+    // Check existence first — do NOT call recordReopen for bogus IDs
     const snapshot = await getSession(id, deps)
 
     // readSession returns [] for an unknown session_id → transcript will be empty
     // and turnsCompleted will be 0 with no start event. Detect via empty transcript
     // AND no verdict AND status in_progress (i.e. nothing was ever written).
-    // The most reliable signal: if there are no events at all the transcript is []
-    // and the status is in_progress. We check the transcript length AND turnsCompleted.
     if (snapshot.transcript.length === 0 && snapshot.turnsCompleted === 0 && !snapshot.verdict) {
-      return c.json({ error: 'session_not_found' }, 404)
+      return c.json({ error: ERROR_CODE.SESSION_NOT_FOUND }, 404)
     }
+
+    // Session exists — record the reopen event
+    await recordReopen(id, userAgent, deps)
 
     return c.json(snapshot, 200)
   })
@@ -105,7 +116,8 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
     const parsed = answerBodySchema.safeParse(raw)
     if (!parsed.success) {
       const firstIssue = parsed.error.issues[0]
-      return c.json({ error: firstIssue?.message ?? 'Invalid body' }, 400)
+      const field = firstIssue?.path[0] as string | undefined
+      return c.json({ error: firstIssue?.message ?? 'Invalid body', field }, 400)
     }
 
     const { text } = parsed.data
@@ -116,12 +128,12 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
     } catch (err) {
       if (err instanceof DrillTurnError) {
         // Distinguish "session already complete" (409) from model errors (502)
-        if (err.message === 'Cannot submit answer: session is complete') {
-          return c.json({ error: 'session_complete' }, 409)
+        if (err.code === 'session_complete') {
+          return c.json({ error: ERROR_CODE.SESSION_COMPLETE }, 409)
         }
         return c.json(
           {
-            error: 'drill_turn_failed',
+            error: ERROR_CODE.DRILL_TURN_FAILED,
             message: 'Model hiccuped — please retry',
             sessionId: err.sessionId,
           },
@@ -143,14 +155,14 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
 
     // If the session has no events at all, treat as not found
     if (snapshot.transcript.length === 0 && snapshot.turnsCompleted === 0 && !snapshot.verdict) {
-      return c.json({ error: 'session_not_found' }, 404)
+      return c.json({ error: ERROR_CODE.SESSION_NOT_FOUND }, 404)
     }
 
     // Enforce 3-turn minimum (skip if already complete — finishSession is idempotent)
     if (snapshot.status !== 'complete' && snapshot.turnsCompleted < 3) {
       return c.json(
         {
-          error: 'minimum_turns_not_met',
+          error: ERROR_CODE.MINIMUM_TURNS_NOT_MET,
           minimum: 3,
           actual: snapshot.turnsCompleted,
         },
@@ -167,7 +179,7 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
         const fallbackSnapshot = await getSession(id, deps)
         return c.json(
           {
-            error: 'verdict_failed',
+            error: ERROR_CODE.VERDICT_FAILED,
             message: 'Verdict unavailable — here\'s your transcript',
             transcript: fallbackSnapshot.transcript,
           },
