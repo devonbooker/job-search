@@ -68,6 +68,7 @@ export interface StartSessionInput {
   resume: string
   jobDescription: string
   userAgent?: string
+  project?: string
 }
 
 export interface StartSessionResult {
@@ -194,25 +195,28 @@ export async function startSession(
   input: StartSessionInput,
   deps: EngineDeps,
 ): Promise<StartSessionResult> {
-  const { resume, jobDescription } = input
+  const { resume, jobDescription, project } = input
   const sessionId = newSessionId()
   const now = ts(deps)
   const fp = storagePath(deps)
   const ep = errorPath(deps)
 
   // Write start event
+  const startEventBase = {
+    session_id: sessionId,
+    event: 'start' as const,
+    ts: now,
+    resume_hash: hashInput(resume),
+    jd_hash: hashInput(jobDescription),
+    resume_preview: resume.slice(0, PREVIEW_LENGTH),
+    jd_preview: jobDescription.slice(0, PREVIEW_LENGTH),
+    resume,
+    job_description: jobDescription,
+  }
   await appendEvent(
-    {
-      session_id: sessionId,
-      event: 'start',
-      ts: now,
-      resume_hash: hashInput(resume),
-      jd_hash: hashInput(jobDescription),
-      resume_preview: resume.slice(0, PREVIEW_LENGTH),
-      jd_preview: jobDescription.slice(0, PREVIEW_LENGTH),
-      resume,
-      job_description: jobDescription,
-    },
+    project && project.trim().length > 0
+      ? { ...startEventBase, project }
+      : startEventBase,
     fp,
   )
 
@@ -222,6 +226,7 @@ export async function startSession(
     jobDescription,
     turn: 1,
     priorTranscript: [],
+    project,
   })
 
   let rawResponse: string

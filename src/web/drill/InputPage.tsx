@@ -18,6 +18,7 @@ export function InputPage() {
   const nav = useNavigate()
   const [resume, setResume] = useState('')
   const [jd, setJd] = useState('')
+  const [project, setProject] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -28,7 +29,7 @@ export function InputPage() {
     if (!canSubmit) return
     setSubmitting(true)
     setError(null)
-    const result = await startDrill(resume, jd)
+    const result = await startDrill(resume, jd, project)
     setSubmitting(false)
     if (!result.ok) {
       const msg = result.message ?? result.error ?? 'Something went wrong'
@@ -79,6 +80,32 @@ export function InputPage() {
             onChange={e => setJd(e.target.value)}
             rows={8}
             placeholder="Paste the job description here..."
+            style={{
+              width: '100%',
+              background: 'var(--panel)',
+              color: 'var(--fg)',
+              border: '1px solid #333',
+              borderRadius: 4,
+              padding: 10,
+              fontFamily: 'monospace',
+              fontSize: 13,
+              resize: 'vertical',
+              boxSizing: 'border-box',
+            }}
+          />
+        </div>
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+            <label style={{ fontWeight: 600 }}>Specific project to drill <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
+          </div>
+          <p style={{ color: 'var(--muted)', fontSize: 12, margin: '0 0 6px', fontFamily: 'system-ui' }}>
+            Paste one project description or a GitHub link you want the drill to focus on. Leave empty to let the drill pick from your resume.
+          </p>
+          <textarea
+            value={project}
+            onChange={e => setProject(e.target.value)}
+            rows={4}
+            placeholder="Paste a project description or GitHub link (optional)..."
             style={{
               width: '100%',
               background: 'var(--panel)',

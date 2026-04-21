@@ -85,9 +85,25 @@ export function VerdictPage({ verdict, transcript }: VerdictPageProps) {
             }}>
               <div style={{ fontWeight: 700, marginBottom: 4 }}>{item.area}</div>
               <div style={{ color: 'var(--muted)', marginBottom: 6 }}>{item.why}</div>
-              <div style={{ fontSize: 12, color: '#a0a0a0', fontStyle: 'italic' }}>
+              <div style={{ fontSize: 12, color: '#a0a0a0', fontStyle: 'italic', marginBottom: item.how_to_fix || item.model_answer ? 10 : 0 }}>
                 e.g. &ldquo;{item.example_question}&rdquo;
               </div>
+              {item.how_to_fix && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                    How to close this gap
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.6 }}>{item.how_to_fix}</div>
+                </div>
+              )}
+              {item.model_answer && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', marginBottom: 4 }}>
+                    What a solid answer looks like
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.6, color: '#b0c4b8' }}>{item.model_answer}</div>
+                </div>
+              )}
             </div>
           ))}
         </div>

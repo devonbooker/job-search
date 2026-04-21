@@ -144,6 +144,27 @@ describe('startSession', () => {
     expect(events[0].ts).toBe('2026-01-01T00:00:00.000Z')
   })
 
+  test('startSession with project writes project field to start event', async () => {
+    const project = 'My custom WAF rules project written in Go'
+    const deps = makeDeps([JSON.stringify(goodDrillTurn())])
+    const result = await startSession({ resume: RESUME, jobDescription: JD, project }, deps)
+
+    const events = await getEvents(result.sessionId)
+    const startEvent = events[0]
+    if (startEvent.event !== 'start') throw new Error('Expected start event')
+    expect((startEvent as typeof startEvent & { project?: string }).project).toBe(project)
+  })
+
+  test('startSession with empty project does not write project field to start event', async () => {
+    const deps = makeDeps([JSON.stringify(goodDrillTurn())])
+    const result = await startSession({ resume: RESUME, jobDescription: JD, project: '' }, deps)
+
+    const events = await getEvents(result.sessionId)
+    const startEvent = events[0]
+    if (startEvent.event !== 'start') throw new Error('Expected start event')
+    expect((startEvent as typeof startEvent & { project?: string }).project).toBeUndefined()
+  })
+
   test('logs error event and throws DrillTurnError on malformed Sonnet JSON', async () => {
     const deps = makeDeps(['not valid json at all {{{'])
     await expect(startSession({ resume: RESUME, jobDescription: JD }, deps))

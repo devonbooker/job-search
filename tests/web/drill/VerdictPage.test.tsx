@@ -14,6 +14,8 @@ const baseVerdict: Verdict = {
       area: 'Container security',
       why: 'Could not explain seccomp profiles',
       example_question: 'How would you restrict syscalls in a container?',
+      how_to_fix: 'Read the Linux seccomp man page and the Docker seccomp profile docs. Write a custom seccomp profile that blocks ptrace. Test it with strace on a running container.',
+      model_answer: 'We applied a custom seccomp profile that whitelisted only the syscalls our app needed. We used Docker audit mode first to capture the full syscall surface, then stripped everything else. The profile blocked ptrace and mount entirely.',
     },
   ],
   interviewer_verdict: 'Devon showed solid infra fundamentals but container security depth needs work.',
@@ -87,6 +89,36 @@ describe('VerdictPage', () => {
     renderVerdict()
     const link = screen.getByRole('link', { name: /Run another drill/i })
     expect(link).toHaveAttribute('href', '/drill')
+  })
+
+  test('renders how_to_fix subsection when present', () => {
+    renderVerdict()
+    expect(screen.getByText(/How to close this gap/i)).toBeInTheDocument()
+    expect(screen.getByText(/Read the Linux seccomp man page/i)).toBeInTheDocument()
+  })
+
+  test('renders model_answer subsection when present', () => {
+    renderVerdict()
+    expect(screen.getByText(/What a solid answer looks like/i)).toBeInTheDocument()
+    expect(screen.getByText(/We applied a custom seccomp profile/i)).toBeInTheDocument()
+  })
+
+  test('does not crash when how_to_fix and model_answer are absent (backward compat)', () => {
+    const oldStyleVerdict: Verdict = {
+      ...baseVerdict,
+      weak: [
+        {
+          area: 'Container security',
+          why: 'Could not explain seccomp profiles',
+          example_question: 'How would you restrict syscalls in a container?',
+          // no how_to_fix, no model_answer
+        },
+      ],
+    }
+    expect(() => renderVerdict(oldStyleVerdict)).not.toThrow()
+    // Neither new subsection should appear
+    expect(screen.queryByText(/How to close this gap/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/What a solid answer looks like/i)).not.toBeInTheDocument()
   })
 
   test('renders Solid overall in green-ish styling', () => {

@@ -103,6 +103,29 @@ describe('appendEvent / readSession', () => {
     expect(parsed).toEqual(event)
   })
 
+  test('start event accepts optional project field and round-trips correctly', async () => {
+    const event: DrillEvent = {
+      session_id: 'SESSION_PROJ',
+      event: 'start',
+      ts: new Date().toISOString(),
+      resume_hash: hashInput('resume'),
+      jd_hash: hashInput('jd'),
+      resume_preview: 'Senior engineer...',
+      jd_preview: 'We are hiring...',
+      resume: 'Senior engineer full text',
+      job_description: 'We are hiring full text',
+      project: 'My open source WAF rules project',
+    }
+
+    await appendEvent(event, jsonlPath)
+
+    const stored = await readSession('SESSION_PROJ', jsonlPath)
+    expect(stored).toHaveLength(1)
+    const startEvent = stored[0]
+    if (startEvent.event !== 'start') throw new Error('Expected start event')
+    expect((startEvent as typeof startEvent & { project?: string }).project).toBe('My open source WAF rules project')
+  })
+
   test('two concurrent appendEvent calls produce exactly 2 valid JSON lines', async () => {
     const event1: DrillEvent = {
       session_id: 'SESSION_A',

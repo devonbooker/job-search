@@ -65,10 +65,11 @@ async function drillFetch<T>(path: string, init: RequestInit = {}): Promise<Dril
 export function startDrill(
   resume: string,
   jobDescription: string,
+  project?: string,
 ): Promise<DrillResult<{ sessionId: string; firstQuestion: string }>> {
   return drillFetch('/drill/api/start', {
     method: 'POST',
-    body: JSON.stringify({ resume, jobDescription }),
+    body: JSON.stringify({ resume, jobDescription, project: project ?? '' }),
   })
 }
 

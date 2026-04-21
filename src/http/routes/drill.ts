@@ -28,6 +28,7 @@ const ERROR_CODE = {
 const startBodySchema = z.object({
   resume: z.string().min(200, 'Resume must be at least 200 characters'),
   jobDescription: z.string().min(100, 'Job description must be at least 100 characters'),
+  project: z.string().optional().default(''),
 })
 
 const answerBodySchema = z.object({
@@ -60,11 +61,11 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
       return c.json({ error: firstIssue?.message ?? 'Invalid body', field }, 400)
     }
 
-    const { resume, jobDescription } = parsed.data
+    const { resume, jobDescription, project } = parsed.data
     const userAgent = c.req.header('User-Agent')
 
     try {
-      const result = await startSession({ resume, jobDescription, userAgent }, deps)
+      const result = await startSession({ resume, jobDescription, userAgent, project }, deps)
       return c.json({ sessionId: result.sessionId, firstQuestion: result.firstQuestion }, 200)
     } catch (err) {
       if (err instanceof DrillTurnError) {

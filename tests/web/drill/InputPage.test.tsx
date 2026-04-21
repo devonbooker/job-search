@@ -71,7 +71,7 @@ describe('InputPage', () => {
     expect(screen.getByText('0 / 100')).toBeInTheDocument()
   })
 
-  test('navigates to /drill/:id on successful submit', async () => {
+  test('navigates to /drill/:id on successful submit without project', async () => {
     vi.mocked(startDrill).mockResolvedValue({
       ok: true,
       data: { sessionId: 'sess-abc', firstQuestion: 'Tell me about yourself' },
@@ -87,9 +87,39 @@ describe('InputPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /Start drill/i }))
 
     await waitFor(() => {
-      expect(startDrill).toHaveBeenCalledWith(makeResume(200), makeJd(100))
+      expect(startDrill).toHaveBeenCalledWith(makeResume(200), makeJd(100), '')
       expect(mockNavigate).toHaveBeenCalledWith('/drill/sess-abc')
     })
+  })
+
+  test('passes project text to startDrill when provided', async () => {
+    vi.mocked(startDrill).mockResolvedValue({
+      ok: true,
+      data: { sessionId: 'sess-xyz', firstQuestion: 'Tell me about your project' },
+    })
+
+    renderPage()
+    fireEvent.change(screen.getByPlaceholderText(/Paste your full resume/i), {
+      target: { value: makeResume(200) },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Paste the job description/i), {
+      target: { value: makeJd(100) },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Paste a project description or GitHub link/i), {
+      target: { value: 'github.com/devon/my-waf' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Start drill/i }))
+
+    await waitFor(() => {
+      expect(startDrill).toHaveBeenCalledWith(makeResume(200), makeJd(100), 'github.com/devon/my-waf')
+    })
+  })
+
+  test('renders the optional project textarea with label and helper text', () => {
+    renderPage()
+    expect(screen.getByText(/Specific project to drill/i)).toBeInTheDocument()
+    expect(screen.getByText(/Leave empty to let the drill pick from your resume/i)).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Paste a project description or GitHub link/i)).toBeInTheDocument()
   })
 
   test('displays error message on API 400 response', async () => {

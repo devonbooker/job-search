@@ -100,6 +100,29 @@ describe('POST /drill/api/start', () => {
     expect(body.field).toBe('jobDescription')
   })
 
+  test('happy path with project field: 200 with sessionId and firstQuestion', async () => {
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD, project: 'My WAF rules project in Go' }),
+    })
+    expect(res.status).toBe(200)
+    const body = await res.json() as { sessionId: string; firstQuestion: string }
+    expect(typeof body.sessionId).toBe('string')
+    expect(body.sessionId.length).toBeGreaterThan(10)
+  })
+
+  test('project field is optional: 200 without project field', async () => {
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(res.status).toBe(200)
+  })
+
   test('Sonnet throws: 502 with retry-friendly error', async () => {
     const brokenClient = {
       messages: {

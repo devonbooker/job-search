@@ -20,7 +20,15 @@ const _verdict: Verdict = {
   target_role: 'Senior Cloud Security Engineer',
   project_drilled: 'AWS WAF migration',
   solid: ['Described the architecture clearly'],
-  weak: [{ area: 'Threat modelling', why: 'Vague', example_question: 'What threat model did you use?' }],
+  weak: [
+    {
+      area: 'Threat modelling',
+      why: 'Vague',
+      example_question: 'What threat model did you use?',
+      how_to_fix: 'Study STRIDE and run OWASP Threat Dragon on a real data flow diagram. Read MITRE ATT&CK T1190.',
+      model_answer: 'We ran STRIDE against the auth boundary using OWASP Threat Dragon. That surfaced a spoofing risk on the token refresh endpoint.',
+    },
+  ],
   interviewer_verdict: 'Good phone screen candidate.',
   overall: 'Borderline',
   overall_summary: 'Strong ops knowledge, gaps in formal threat modelling.',
@@ -154,6 +162,18 @@ describe('VERDICT_SYSTEM', () => {
     expect(VERDICT_SYSTEM).toContain('STRING ARRAY')
     expect(VERDICT_SYSTEM).toContain('OBJECT ARRAY')
   })
+
+  test('exact-phrase regression: how_to_fix is a required field in weak items', () => {
+    expect(VERDICT_SYSTEM).toContain('how_to_fix')
+  })
+
+  test('exact-phrase regression: model_answer is a required field in weak items', () => {
+    expect(VERDICT_SYSTEM).toContain('model_answer')
+  })
+
+  test('contains "For each weak item, you MUST include" instruction', () => {
+    expect(VERDICT_SYSTEM).toContain('For each weak item, you MUST include')
+  })
 })
 
 // ─── buildDrillUserMessage ────────────────────────────────────────────────────
@@ -253,5 +273,53 @@ describe('buildDrillUserMessage', () => {
       priorTranscript: transcript,
     })
     expect(msg).not.toContain('Begin the drill with your first question')
+  })
+
+  test('turn 1 with project includes "Specific project" section header', () => {
+    const project = 'github.com/devon/waf-project - custom WAF rules in Go'
+    const msg = buildDrillUserMessage({
+      resume: RESUME,
+      jobDescription: JD,
+      turn: 1,
+      priorTranscript: [],
+      project,
+    })
+    expect(msg).toContain('Specific project to focus the drill on:')
+    expect(msg).toContain(project)
+  })
+
+  test('turn 1 with project includes "Prioritize the pasted project" instruction', () => {
+    const msg = buildDrillUserMessage({
+      resume: RESUME,
+      jobDescription: JD,
+      turn: 1,
+      priorTranscript: [],
+      project: 'My open source security scanner',
+    })
+    expect(msg).toContain('Prioritize the pasted project when choosing what to drill on')
+  })
+
+  test('turn 1 with empty project omits "Specific project" section', () => {
+    const msg = buildDrillUserMessage({
+      resume: RESUME,
+      jobDescription: JD,
+      turn: 1,
+      priorTranscript: [],
+      project: '',
+    })
+    expect(msg).not.toContain('Specific project')
+    expect(msg).toContain('Begin the drill with your first question.')
+    expect(msg).not.toContain('Prioritize')
+  })
+
+  test('turn 1 without project arg still works (backward compat)', () => {
+    const msg = buildDrillUserMessage({
+      resume: RESUME,
+      jobDescription: JD,
+      turn: 1,
+      priorTranscript: [],
+    })
+    expect(msg).toContain('Begin the drill with your first question.')
+    expect(msg).not.toContain('Specific project')
   })
 })

@@ -33,7 +33,9 @@ is to surface what the candidate genuinely knows vs what they could parrot.
 
 ## Your job each turn
 
-1. Ask ONE question per turn. Focus on a specific project or concrete claim from the candidate's resume. \
+1. Ask ONE question per turn. If a 'Specific project' block is included in the user's message, focus \
+drilling on that project's claims. Otherwise, pick the most stretch-relevant project or technical claim \
+from the resume. Focus on a specific project or concrete claim from the candidate's resume. \
 Questions must test technical depth, not surface understanding. Ask about choices made, trade-offs, \
 failure modes, and specifics - not definitions.
 
@@ -97,7 +99,7 @@ Schema:
   "project_drilled": "string — the primary resume project the drill focused on",
   "solid": ["string", "..."],
   "weak": [
-    { "area": "string", "why": "string", "example_question": "string — verbatim from transcript" }
+    { "area": "string", "why": "string", "example_question": "string — verbatim from transcript", "how_to_fix": "string", "model_answer": "string" }
   ],
   "interviewer_verdict": "string — 2-3 sentences: would you advance to phone screen? on-site? how many weeks to study the gap?",
   "overall": "Solid|Borderline|Needs work — use model_assessment ratings as the primary signal: mostly-solid transcript → 'Solid', mixed partial/solid → 'Borderline', majority weak or partial → 'Needs work'",
@@ -114,12 +116,33 @@ IMPORTANT: The 'solid' field is an array of plain strings (one per solid area), 
     "Clean articulation of incident response - verbatim quote: 'we paged the on-call, isolated the pod, rotated creds in under 15 minutes'"
   ]
 
-"weak" is an OBJECT ARRAY — each element has three keys: area (string), why (string), example_question (string), e.g.:
+"weak" is an OBJECT ARRAY — each element has five keys: area (string), why (string), example_question (string), how_to_fix (string), model_answer (string), e.g.:
   "weak": [
-    { "area": "Formal threat modelling", "why": "Named the concept but could not describe a specific threat model used or decisions it drove", "example_question": "What threat model did you apply to that service?" }
+    {
+      "area": "Formal threat modelling",
+      "why": "Named the concept but could not describe a specific threat model used or decisions it drove",
+      "example_question": "What threat model did you apply to that service?",
+      "how_to_fix": "Study MITRE ATT&CK technique T1003.001 alongside Sysmon Event ID 10 (process access). Spin up a free SentinelOne Singularity trial and replicate the LSASS dump using ProcDump, then open the raw detection telemetry to identify the access mask (0x1010). Write your own detection rule. Re-drill in two weeks.",
+      "model_answer": "We ran STRIDE against the authentication boundary using a data flow diagram in OWASP Threat Dragon. That surfaced a spoofing risk on the token refresh endpoint - we had no replay protection. We added a jti claim to the JWT and stored seen tokens in Redis with a TTL matching the access token lifetime."
+    }
   ]
 
 Do NOT use object shapes for "solid" entries. Do NOT use plain strings for "weak" entries.
+
+## For each weak item, you MUST include:
+
+- "how_to_fix": 3-5 sentences. Reference specific concepts, real documentation, specific practice reps. \
+Be concrete: name specific event IDs, MITRE technique numbers, vendor trial links, detection fields, or \
+lab exercises. Example: "Study MITRE ATT&CK technique T1003.001 alongside Sysmon Event ID 10 (process \
+access). Spin up a free SentinelOne Singularity trial and replicate the LSASS dump using ProcDump, then \
+open the raw detection telemetry to identify the access mask (0x1010). Write your own detection rule. \
+Re-drill in two weeks."
+
+- "model_answer": 2-4 sentences. Show what a solid answer would have sounded like using real specifics - \
+event IDs, telemetry sources, access flags, specific vendor fields. Be concrete, not abstract. Example: \
+"We used AWS WAF with the AWSManagedRulesCommonRuleSet plus a custom rule for our injection patterns. \
+We ran it in count mode for 2 weeks to tune out false positives on /api/search before flipping to block \
+mode. The custom rule matched on the X-Forwarded-For header stripping that our upstream proxy was adding."
 
 ## Constraints
 
@@ -138,22 +161,33 @@ This prevents pure-positive verdicts that are not credible.
  *
  * Turn 1 with empty transcript: emits resume + JD sections and a "begin" prompt.
  * Subsequent turns: emits resume + JD sections followed by the full prior transcript.
+ * When `project` is provided and non-empty, adds a "Specific project" section that
+ * biases the drill toward that project.
  */
 export function buildDrillUserMessage(args: {
   resume: string
   jobDescription: string
   turn: number
   priorTranscript: Array<{ role: 'question' | 'answer'; text: string; turn: number }>
+  project?: string
 }): string {
-  const { resume, jobDescription, turn, priorTranscript } = args
+  const { resume, jobDescription, turn, priorTranscript, project } = args
 
   const parts: string[] = [
     `Resume:\n${resume}`,
     `Target role (JD):\n${jobDescription}`,
   ]
 
+  if (project && project.trim().length > 0) {
+    parts.push(`Specific project to focus the drill on:\n${project}`)
+  }
+
   if (priorTranscript.length === 0) {
-    parts.push('Begin the drill with your first question.')
+    if (project && project.trim().length > 0) {
+      parts.push('Begin the drill with your first question. Prioritize the pasted project when choosing what to drill on.')
+    } else {
+      parts.push('Begin the drill with your first question.')
+    }
   } else {
     const transcriptLines = priorTranscript.map(entry => {
       const label = entry.role === 'question' ? `Q${entry.turn}` : `A${entry.turn}`
