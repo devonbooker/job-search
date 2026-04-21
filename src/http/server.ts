@@ -10,6 +10,7 @@ import { mountDrillRoutes } from './routes/drill'
 export interface AppDeps {
   httpApiAgent: HttpApiAgent
   token: string
+  /** Shared Anthropic client passed to drill routes; constructed once in main.ts. */
   anthropic: Anthropic
 }
 

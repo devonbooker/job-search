@@ -4,9 +4,9 @@ import { tmpdir } from 'os'
 import { join } from 'path'
 import { existsSync, readFileSync } from 'fs'
 import Anthropic from '@anthropic-ai/sdk'
+import { createApp } from '../../src/http/server'
 import { MessageQueue } from '../../src/agents/queue'
 import { HttpApiAgent } from '../../src/http/http-api-agent'
-import { createApp } from '../../src/http/server'
 
 // ─── Stub helpers ─────────────────────────────────────────────────────────────
 
@@ -96,27 +96,20 @@ Requirements:
 - Ownership mindset: you designed it, you shipped it, you own it
 `.trim()
 
-const TEST_DB = './test-drill-flow.db'
 const TOKEN = 'd'.repeat(64)
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe('Drill integration: full end-to-end flow', () => {
-  let queue: MessageQueue
   let tmpDir: string
   let storageFile: string
 
   beforeEach(async () => {
-    queue = new MessageQueue(TEST_DB)
     tmpDir = await mkdtemp(join(tmpdir(), 'drill-test-'))
     storageFile = join(tmpDir, 'sessions.jsonl')
   })
 
   afterEach(async () => {
-    queue.close()
-    if (existsSync(TEST_DB)) {
-      try { require('fs').unlinkSync(TEST_DB) } catch { /* ignore */ }
-    }
     await rm(tmpDir, { recursive: true, force: true })
   })
 
@@ -144,17 +137,8 @@ describe('Drill integration: full end-to-end flow', () => {
     ]
 
     const anthropic = createStubbedAnthropic(stubbedResponses)
-    const agent = new HttpApiAgent(queue, anthropic as unknown as InstanceType<typeof Anthropic>)
-    const app = createApp({
-      httpApiAgent: agent,
-      token: TOKEN,
-      anthropic: anthropic as unknown as InstanceType<typeof Anthropic>,
-    })
 
-    // Use DrillRouteDeps storageFilePath override via a custom app with explicit deps
-    // Since createApp wires mountDrillRoutes with { anthropic }, and we need storageFilePath
-    // for JSONL verification, we use the drill routes directly with our tmpDir.
-    // Instead, rebuild with mountDrillRoutes directly to inject storageFilePath.
+    // Use mountDrillRoutes directly to inject storageFilePath for JSONL verification.
     const { Hono } = await import('hono')
     const { mountDrillRoutes } = await import('../../src/http/routes/drill')
     const drillApp = new Hono()
@@ -230,21 +214,9 @@ describe('Drill integration: full end-to-end flow', () => {
 })
 
 describe('Drill integration: SPA fallback', () => {
-  let queue: MessageQueue
-
-  beforeEach(() => {
-    queue = new MessageQueue(TEST_DB)
-  })
-
-  afterEach(() => {
-    queue.close()
-    if (existsSync(TEST_DB)) {
-      try { require('fs').unlinkSync(TEST_DB) } catch { /* ignore */ }
-    }
-  })
-
   test('GET /drill falls through to SPA (not a drill API route)', async () => {
     const anthropic = createStubbedAnthropic([])
+    const queue = new MessageQueue(':memory:')
     const agent = new HttpApiAgent(queue, anthropic as unknown as InstanceType<typeof Anthropic>)
     const app = createApp({
       httpApiAgent: agent,
@@ -254,23 +226,19 @@ describe('Drill integration: SPA fallback', () => {
 
     // /drill is not a drill API route — it should fall through to the static/SPA handler.
     // In test (no dist/web), Hono's serveStatic returns 404, NOT a drill API error.
-    // The key assertion: it does NOT return a drill JSON error object with status 400/500.
-    const res = await app.request('/drill')
-    // Should be 200 (SPA index.html served) or 404 (no dist/web in test env).
-    // In either case, it must NOT be a JSON drill API response.
-    const contentType = res.headers.get('content-type') ?? ''
-    // If it returns JSON, it must not be a drill API error
-    if (contentType.includes('application/json')) {
-      const body = await res.json() as { error?: string }
-      expect(body.error).not.toContain('drill')
-    } else {
-      // HTML or 404 — both are correct
-      expect([200, 404]).toContain(res.status)
-    }
+    // The key assertion: it does NOT return a drill JSON error response at all.
+    const res = await app.request('/drill', { method: 'GET' })
+    const text = await res.text()
+    // Could be 200 (static serve) or 404 (no dist/web in test env) — both acceptable.
+    // What matters: NOT a JSON response from the drill API.
+    expect(text).not.toMatch(/"error":\s*"session_not_found"/)
+    expect(text).not.toMatch(/"error":\s*"validation_error"/)
+    expect(text).not.toMatch(/^\{.*"error":/)
   })
 
   test('GET /drill/some-session-id falls through to SPA (not an API route)', async () => {
     const anthropic = createStubbedAnthropic([])
+    const queue = new MessageQueue(':memory:')
     const agent = new HttpApiAgent(queue, anthropic as unknown as InstanceType<typeof Anthropic>)
     const app = createApp({
       httpApiAgent: agent,
@@ -278,38 +246,22 @@ describe('Drill integration: SPA fallback', () => {
       anthropic: anthropic as unknown as InstanceType<typeof Anthropic>,
     })
 
-    const res = await app.request('/drill/some-session-id-12345')
     // /drill/:sessionId is the SPA frontend route, not an API route.
-    // Must not return a JSON drill-API error.
-    const contentType = res.headers.get('content-type') ?? ''
-    if (contentType.includes('application/json')) {
-      const body = await res.json() as { error?: string }
-      // If JSON, it's not a "session not found" 404 from the drill API
-      expect(res.status).not.toBe(404)
-    } else {
-      expect([200, 404]).toContain(res.status)
-    }
+    // Must not return a drill API JSON error.
+    const res = await app.request('/drill/some-session-id-12345')
+    const text = await res.text()
+    expect(text).not.toMatch(/"error":\s*"session_not_found"/)
+    expect(text).not.toMatch(/"error":\s*"validation_error"/)
+    expect(text).not.toMatch(/^\{.*"error":/)
   })
 })
 
 describe('Drill integration: auth middleware does NOT apply to /drill/api', () => {
-  let queue: MessageQueue
-
-  beforeEach(() => {
-    queue = new MessageQueue(TEST_DB)
-  })
-
-  afterEach(() => {
-    queue.close()
-    if (existsSync(TEST_DB)) {
-      try { require('fs').unlinkSync(TEST_DB) } catch { /* ignore */ }
-    }
-  })
-
-  test('POST /drill/api/start without Authorization header is NOT 401', async () => {
+  test('POST /drill/api/start without Authorization header returns 200', async () => {
     const anthropic = createStubbedAnthropic([
       drillTurnJson('Describe a time you hardened a container workload.', 'solid'),
     ])
+    const queue = new MessageQueue(':memory:')
     const agent = new HttpApiAgent(queue, anthropic as unknown as InstanceType<typeof Anthropic>)
     const app = createApp({
       httpApiAgent: agent,
@@ -317,34 +269,27 @@ describe('Drill integration: auth middleware does NOT apply to /drill/api', () =
       anthropic: anthropic as unknown as InstanceType<typeof Anthropic>,
     })
 
-    // No Authorization header — drill routes are public
+    // No Authorization header — drill routes are public.
+    // Expect 200: proves the route is mounted, auth didn't block it, and the full stack worked.
     const res = await app.request('/drill/api/start', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
     })
-
-    // Must NOT be 401 (Unauthorized). Can be 200 (success) or 400 (validation) but never auth-gated.
-    expect(res.status).not.toBe(401)
+    expect(res.status).toBe(200)
   })
 })
 
 describe('Drill integration: verdict fallback on Opus failure', () => {
   let tmpDir: string
   let storageFile: string
-  let queue: MessageQueue
 
   beforeEach(async () => {
-    queue = new MessageQueue(TEST_DB)
     tmpDir = await mkdtemp(join(tmpdir(), 'drill-verdict-fail-'))
     storageFile = join(tmpDir, 'sessions.jsonl')
   })
 
   afterEach(async () => {
-    queue.close()
-    if (existsSync(TEST_DB)) {
-      try { require('fs').unlinkSync(TEST_DB) } catch { /* ignore */ }
-    }
     await rm(tmpDir, { recursive: true, force: true })
   })
 
