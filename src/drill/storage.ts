@@ -1,6 +1,5 @@
-import { createHash } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 import { appendFile, readFile, mkdir } from 'fs/promises'
-import { existsSync } from 'fs'
 import { dirname } from 'path'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -17,6 +16,10 @@ export type DrillEvent =
 
 // Crockford base32 alphabet (uppercase, no I L O U)
 const ENCODING = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+const ULID_TIME_LEN = 10
+const ULID_RAND_LEN = 16
+const ULID_RAND_BYTES = 10
 
 function encodeTime(ms: number, len: number): string {
   let str = ''
@@ -36,7 +39,7 @@ function encodeRandomBytes(bytes: Uint8Array): string {
   let bitBuf = 0
   let bitsLeft = 0
   let byteIdx = 0
-  for (let i = 0; i < 16; i++) {
+  for (let i = 0; i < ULID_RAND_LEN; i++) {
     while (bitsLeft < 5) {
       bitBuf = (bitBuf << 8) | bytes[byteIdx++]
       bitsLeft += 8
@@ -48,11 +51,7 @@ function encodeRandomBytes(bytes: Uint8Array): string {
 }
 
 function freshRandomBytes(): Uint8Array {
-  const bytes = new Uint8Array(10)
-  for (let i = 0; i < 10; i++) {
-    bytes[i] = Math.floor(Math.random() * 256)
-  }
-  return bytes
+  return new Uint8Array(randomBytes(ULID_RAND_BYTES).buffer)
 }
 
 // Increment an 80-bit value stored in a Uint8Array (big-endian).
@@ -82,7 +81,8 @@ let lastRandom = new Uint8Array(10)
 export function newSessionId(): string {
   let ms = Date.now()
 
-  if (ms === lastTimestamp) {
+  if (ms <= lastTimestamp) {
+    ms = lastTimestamp
     const overflow = incrementBytes(lastRandom)
     if (overflow) {
       // Advance timestamp by 1 ms to avoid collision
@@ -95,7 +95,7 @@ export function newSessionId(): string {
     lastRandom = freshRandomBytes()
   }
 
-  return encodeTime(ms, 10) + encodeRandomBytes(lastRandom)
+  return encodeTime(ms, ULID_TIME_LEN) + encodeRandomBytes(lastRandom)
 }
 
 // ─── Hash ────────────────────────────────────────────────────────────────────
@@ -128,9 +128,7 @@ let writeChain: Promise<void> = Promise.resolve()
 export function appendEvent(event: DrillEvent, filePath: string = DEFAULT_PATH): Promise<void> {
   const task = writeChain.then(async () => {
     const dir = dirname(filePath)
-    if (!existsSync(dir)) {
-      await mkdir(dir, { recursive: true })
-    }
+    await mkdir(dir, { recursive: true })
     await appendFile(filePath, JSON.stringify(event) + '\n', 'utf8')
   })
   // Chain: next write waits for this one, even if it rejects
