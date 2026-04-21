@@ -53,7 +53,7 @@ describe('DRILL_SYSTEM', () => {
   test('contains early-termination sentinel instruction', () => {
     // The prompt must instruct the model when to set early_terminate = true
     expect(DRILL_SYSTEM).toContain('early_terminate')
-    expect(DRILL_SYSTEM).toContain('turn 6')
+    expect(DRILL_SYSTEM).toContain('6 or more completed question/answer pairs')
   })
 
   test('instructs model to ask ONE question per turn', () => {
@@ -65,6 +65,10 @@ describe('DRILL_SYSTEM', () => {
   test('instructs model to output strict JSON (no prose outside JSON)', () => {
     const lower = DRILL_SYSTEM.toLowerCase()
     expect(lower.includes('json') || lower.includes('no prose')).toBe(true)
+  })
+
+  test('exact-phrase regression: no prose instruction present', () => {
+    expect(DRILL_SYSTEM).toContain('No prose outside the JSON object')
   })
 
   test('includes drill-down heuristics (vague → specific example, term → define)', () => {
@@ -124,6 +128,18 @@ describe('VERDICT_SYSTEM', () => {
   test('instructs model to cite verbatim from transcript', () => {
     const lower = VERDICT_SYSTEM.toLowerCase()
     expect(lower.includes('verbatim') || lower.includes('cite')).toBe(true)
+  })
+
+  test('exact-phrase regression: no prose instruction present', () => {
+    expect(VERDICT_SYSTEM).toContain('No prose outside the JSON object')
+  })
+
+  test('exact-phrase regression: solid at-least-1 constraint present', () => {
+    expect(VERDICT_SYSTEM).toContain('"solid" MUST have at least 1 entry')
+  })
+
+  test('exact-phrase regression: weak at-least-1 constraint present', () => {
+    expect(VERDICT_SYSTEM).toContain('"weak" MUST have at least 1 entry')
   })
 })
 
