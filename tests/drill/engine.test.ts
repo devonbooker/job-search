@@ -149,10 +149,8 @@ describe('startSession', () => {
     await expect(startSession({ resume: RESUME, jobDescription: JD }, deps))
       .rejects.toBeInstanceOf(DrillTurnError)
 
-    // We need to find the session ID - check all lines in the file
-    const { readFileSync, existsSync } = await import('fs')
-    if (!existsSync(jsonlPath)) return // error before any write is also acceptable
-
+    // The start event is always written before the Sonnet call, so the file always exists here.
+    const { readFileSync } = await import('fs')
     const lines = readFileSync(jsonlPath, 'utf8').split('\n').filter(l => l.trim())
     const parsed = lines.map(l => JSON.parse(l))
     const errorEvent = parsed.find((e: DrillEvent) => e.event === 'error')
@@ -298,6 +296,30 @@ describe('submitAnswer - malformed JSON from Sonnet', () => {
 
     const events = await getEvents(sessionId)
     const errorEvent = events.find(e => e.event === 'error')
+    expect(errorEvent).toBeDefined()
+    if (errorEvent?.event !== 'error') throw new Error()
+    expect(errorEvent.stage).toBe('drill')
+  })
+})
+
+// ─── 5b. submitAnswer - completed session guard ───────────────────────────────
+
+describe('submitAnswer - completed session guard', () => {
+  test('throws DrillTurnError and logs error event when session already has finish event', async () => {
+    const deps = makeDeps([
+      JSON.stringify(goodDrillTurn('Q1')),
+      JSON.stringify(goodVerdict),
+    ])
+
+    const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
+    await finishSession(sessionId, deps)
+
+    // Now attempt to submit an answer to the already-finished session
+    await expect(submitAnswer({ sessionId, answerText: 'Late answer' }, deps))
+      .rejects.toBeInstanceOf(DrillTurnError)
+
+    const events = await getEvents(sessionId)
+    const errorEvent = events.find(e => e.event === 'error' && e.message.includes('session is complete'))
     expect(errorEvent).toBeDefined()
     if (errorEvent?.event !== 'error') throw new Error()
     expect(errorEvent.stage).toBe('drill')

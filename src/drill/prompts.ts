@@ -1,21 +1,14 @@
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type ModelAssessment = 'weak' | 'partial' | 'solid'
+// ModelAssessment and Verdict live in ./types to keep storage.ts import-clean.
+// Re-exported here so existing consumers that import from './prompts' continue to work.
+import type { ModelAssessment } from './types'
+export type { ModelAssessment, Verdict } from './types'
 
 export interface DrillTurnResponse {
   question: string
   model_assessment: ModelAssessment
   early_terminate: boolean
-}
-
-export interface Verdict {
-  target_role: string
-  project_drilled: string
-  solid: string[]
-  weak: Array<{ area: string; why: string; example_question: string }>
-  interviewer_verdict: string
-  overall: 'Solid' | 'Borderline' | 'Needs work'
-  overall_summary: string
 }
 
 // ─── Drill system prompt (Sonnet 4.6) ────────────────────────────────────────

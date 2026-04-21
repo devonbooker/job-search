@@ -11,7 +11,8 @@ import {
   VERDICT_SYSTEM,
   buildDrillUserMessage,
 } from './prompts'
-import type { ModelAssessment, DrillTurnResponse, Verdict } from './prompts'
+import type { DrillTurnResponse } from './prompts'
+import type { ModelAssessment, Verdict } from './types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -229,7 +230,7 @@ export async function startSession(
         event: 'error',
         ts: ts(deps),
         stage: 'drill',
-        message: cause instanceof Error ? cause.message : String(cause),
+        message: `${cause instanceof Error ? cause.message : String(cause)} (stage=drill, session=${sessionId}, turn=1)`,
       },
       ep,
     )
@@ -247,7 +248,7 @@ export async function startSession(
         event: 'error',
         ts: ts(deps),
         stage: 'drill',
-        message: `Failed to parse Sonnet response: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Failed to parse Sonnet response (stage=drill, session=${sessionId}, turn=1): ${cause instanceof Error ? cause.message : String(cause)}`,
       },
       ep,
     )
@@ -289,6 +290,21 @@ export async function submitAnswer(
 
   const events = await readSession(sessionId, fp)
 
+  // Guard: reject submissions to already-completed sessions
+  if (events.some(e => e.event === 'finish')) {
+    await appendEvent(
+      {
+        session_id: sessionId,
+        event: 'error',
+        ts: ts(deps),
+        stage: 'drill',
+        message: `Cannot submit answer: session is complete (session=${sessionId})`,
+      },
+      ep,
+    )
+    throw new DrillTurnError('Cannot submit answer: session is complete', sessionId)
+  }
+
   // Count existing answer events to determine which turn we're completing
   const existingAnswers = events.filter(e => e.event === 'answer')
   const currentTurn = existingAnswers.length + 1 // the turn number we're completing now
@@ -326,7 +342,7 @@ export async function submitAnswer(
         event: 'error',
         ts: ts(deps),
         stage: 'drill',
-        message: cause instanceof Error ? cause.message : String(cause),
+        message: `${cause instanceof Error ? cause.message : String(cause)} (stage=drill, session=${sessionId}, turn=${currentTurn})`,
       },
       ep,
     )
@@ -344,7 +360,7 @@ export async function submitAnswer(
         event: 'error',
         ts: ts(deps),
         stage: 'drill',
-        message: `Failed to parse Sonnet response: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Failed to parse Sonnet response (stage=drill, session=${sessionId}, turn=${currentTurn}): ${cause instanceof Error ? cause.message : String(cause)}`,
       },
       ep,
     )
@@ -414,7 +430,7 @@ export async function finishSession(
   // Idempotency: if already finished, return existing verdict
   const existingFinish = events.find(e => e.event === 'finish')
   if (existingFinish && existingFinish.event === 'finish') {
-    return existingFinish.verdict as Verdict
+    return existingFinish.verdict
   }
 
   const turnsCompleted = events.filter(e => e.event === 'answer').length
@@ -430,7 +446,7 @@ export async function finishSession(
         event: 'error',
         ts: ts(deps),
         stage: 'verdict',
-        message: cause instanceof Error ? cause.message : String(cause),
+        message: `${cause instanceof Error ? cause.message : String(cause)} (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
       },
       ep,
     )
@@ -448,7 +464,7 @@ export async function finishSession(
         event: 'error',
         ts: ts(deps),
         stage: 'verdict',
-        message: `Failed to parse Opus response: ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Failed to parse Opus response (stage=verdict, session=${sessionId}, turn=${turnsCompleted}): ${cause instanceof Error ? cause.message : String(cause)}`,
       },
       ep,
     )
@@ -463,7 +479,7 @@ export async function finishSession(
         event: 'error',
         ts: ts(deps),
         stage: 'verdict',
-        message: 'Verdict validation failed: "solid" must have at least 1 entry',
+        message: `Verdict validation failed: "solid" must have at least 1 entry (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
       },
       ep,
     )
@@ -480,7 +496,7 @@ export async function finishSession(
         event: 'error',
         ts: ts(deps),
         stage: 'verdict',
-        message: 'Verdict validation failed: "weak" must have at least 1 entry',
+        message: `Verdict validation failed: "weak" must have at least 1 entry (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
       },
       ep,
     )
@@ -554,7 +570,7 @@ export async function getSession(
   }
 
   if (finishEvent) {
-    snapshot.verdict = finishEvent.verdict as Verdict
+    snapshot.verdict = finishEvent.verdict
   }
 
   return snapshot

@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'crypto'
 import { appendFile, readFile, mkdir } from 'fs/promises'
 import { dirname } from 'path'
+import type { Verdict } from './types'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -9,7 +10,7 @@ export type DrillEvent =
   | { session_id: string; event: 'question'; ts: string; turn: number; text: string }
   | { session_id: string; event: 'answer'; ts: string; turn: number; text: string; model_assessment: 'weak' | 'partial' | 'solid' }
   | { session_id: string; event: 'reopen'; ts: string; user_agent: string }
-  | { session_id: string; event: 'finish'; ts: string; turns_completed: number; verdict: unknown }
+  | { session_id: string; event: 'finish'; ts: string; turns_completed: number; verdict: Verdict }
   | { session_id: string; event: 'error'; ts: string; stage: 'drill' | 'verdict'; message: string }
 
 // ─── ULID ────────────────────────────────────────────────────────────────────
