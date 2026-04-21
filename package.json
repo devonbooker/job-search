@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "bun run --watch src/main.ts",
+    "dev:drill": "bun run --watch src/main-drill.ts",
     "dev:web": "vite",
     "build:web": "vite build",
     "test": "bun test tests/agents tests/db tests/http tests/integration && vitest run",
