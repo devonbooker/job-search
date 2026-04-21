@@ -104,6 +104,23 @@ Schema:
   "overall_summary": "string — one line summary"
 }
 
+## Field type notes
+
+IMPORTANT: The 'solid' field is an array of plain strings (one per solid area), NOT objects. Do not add keys like 'area' or 'evidence' to solid entries. Match the exact type shown below.
+
+"solid" is a STRING ARRAY — each element is a plain string describing a demonstrated strength, e.g.:
+  "solid": [
+    "Concrete recall of WAF configuration - chose AWSManagedRulesCommonRuleSet, ran in count mode for 2 weeks before flipping to block",
+    "Clean articulation of incident response - verbatim quote: 'we paged the on-call, isolated the pod, rotated creds in under 15 minutes'"
+  ]
+
+"weak" is an OBJECT ARRAY — each element has three keys: area (string), why (string), example_question (string), e.g.:
+  "weak": [
+    { "area": "Formal threat modelling", "why": "Named the concept but could not describe a specific threat model used or decisions it drove", "example_question": "What threat model did you apply to that service?" }
+  ]
+
+Do NOT use object shapes for "solid" entries. Do NOT use plain strings for "weak" entries.
+
 ## Constraints
 
 - "solid" MUST have at least 1 entry. If the candidate genuinely showed no strong moments, identify the least-weak area and credit it.

@@ -65,6 +65,8 @@ export function DrillPage() {
 
   // Track if we've already fetched to avoid double-fetch in StrictMode
   const fetchedRef = useRef(false)
+  // Guard against concurrent finish calls (manual Finish button + auto-finish race)
+  const finishInFlightRef = useRef(false)
 
   useEffect(() => {
     if (!sessionId || fetchedRef.current) return
@@ -171,17 +173,23 @@ export function DrillPage() {
   }
 
   async function handleFinishInternal(sid: string, completedEntries: DrillTranscriptEntry[]) {
-    const result = await finishDrill(sid)
-    if (!result.ok) {
-      if (result.status === 502) {
-        // Verdict failed — show fallback
-        setState({ phase: 'verdict_fallback', transcript: completedEntries })
+    if (finishInFlightRef.current) return
+    finishInFlightRef.current = true
+    try {
+      const result = await finishDrill(sid)
+      if (!result.ok) {
+        if (result.status === 502) {
+          // Verdict failed — show fallback
+          setState({ phase: 'verdict_fallback', transcript: completedEntries })
+          return
+        }
+        setSubmitError(result.message ?? result.error)
         return
       }
-      setSubmitError(result.message ?? result.error)
-      return
+      setState({ phase: 'verdict', verdict: result.data.verdict, transcript: completedEntries })
+    } finally {
+      finishInFlightRef.current = false
     }
-    setState({ phase: 'verdict', verdict: result.data.verdict, transcript: completedEntries })
   }
 
   async function handleFinishClick() {

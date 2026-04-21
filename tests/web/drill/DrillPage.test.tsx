@@ -223,6 +223,50 @@ describe('DrillPage', () => {
     })
   })
 
+  test('double-click Finish does not fire finishDrill twice (race guard)', async () => {
+    vi.mocked(getDrillSession).mockResolvedValue({
+      ok: true,
+      data: makeSnapshot({ turnsCompleted: 4 }),
+    })
+
+    // Slow finishDrill — resolves after we can fire the second click
+    let resolveFinish!: (v: any) => void
+    const finishPromise = new Promise<any>((res) => { resolveFinish = res })
+    vi.mocked(finishDrill).mockReturnValue(finishPromise)
+
+    renderDrillPage()
+    await waitFor(() => screen.getByText('What is a goroutine?'))
+
+    const finishBtn = screen.getByRole('button', { name: /Finish drill/i })
+
+    // Fire two clicks before the first resolves
+    fireEvent.click(finishBtn)
+    fireEvent.click(finishBtn)
+
+    // Resolve the outstanding promise
+    resolveFinish({
+      ok: true,
+      data: {
+        verdict: {
+          target_role: 'Backend Engineer',
+          project_drilled: 'Go microservice',
+          solid: ['Strong goroutine understanding'],
+          weak: [],
+          interviewer_verdict: 'Solid candidate',
+          overall: 'Solid',
+          overall_summary: 'Good overall',
+        },
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('SOLID')).toBeInTheDocument()
+    })
+
+    // finishDrill must have been called exactly once despite two clicks
+    expect(finishDrill).toHaveBeenCalledTimes(1)
+  })
+
   test('completed:true auto-finish after submit renders verdict without user clicking Finish', async () => {
     vi.mocked(getDrillSession).mockResolvedValue({
       ok: true,

@@ -141,6 +141,19 @@ describe('VERDICT_SYSTEM', () => {
   test('exact-phrase regression: weak at-least-1 constraint present', () => {
     expect(VERDICT_SYSTEM).toContain('"weak" MUST have at least 1 entry')
   })
+
+  test('exact-phrase regression: solid is labeled as array of plain strings', () => {
+    expect(VERDICT_SYSTEM).toContain('array of plain strings')
+  })
+
+  test('exact-phrase regression: solid must not use object keys like area or evidence', () => {
+    expect(VERDICT_SYSTEM).toContain("Do not add keys like 'area' or 'evidence' to solid entries")
+  })
+
+  test('solid and weak labeled as STRING ARRAY and OBJECT ARRAY respectively', () => {
+    expect(VERDICT_SYSTEM).toContain('STRING ARRAY')
+    expect(VERDICT_SYSTEM).toContain('OBJECT ARRAY')
+  })
 })
 
 // ─── buildDrillUserMessage ────────────────────────────────────────────────────
