@@ -31,6 +31,18 @@ describe('newSessionId', () => {
     // Both generated in sequence; b should sort >= a
     expect(b >= a).toBe(true)
   })
+
+  test('1000 ULIDs generated in a tight loop are sorted in generation order', () => {
+    const ids: string[] = []
+    for (let i = 0; i < 1000; i++) {
+      ids.push(newSessionId())
+    }
+    // Confirm all IDs are unique
+    expect(new Set(ids).size).toBe(1000)
+    // The sorted order must equal generation order (monotonic guarantee)
+    const sorted = [...ids].sort()
+    expect(sorted).toEqual(ids)
+  })
 })
 
 describe('hashInput', () => {

@@ -27,21 +27,75 @@ function encodeTime(ms: number, len: number): string {
   return str
 }
 
-function encodeRandom(len: number): string {
+// Encode an 80-bit random value (10 bytes) as 16 Crockford base32 chars.
+// Each base32 char encodes 5 bits; 16 * 5 = 80 bits.
+function encodeRandomBytes(bytes: Uint8Array): string {
+  // Pack 10 bytes into a 16-char base32 string (80 bits).
+  // We read 5 bits at a time across the byte array.
   let str = ''
-  for (let i = 0; i < len; i++) {
-    str += ENCODING[Math.floor(Math.random() * 32)]
+  let bitBuf = 0
+  let bitsLeft = 0
+  let byteIdx = 0
+  for (let i = 0; i < 16; i++) {
+    while (bitsLeft < 5) {
+      bitBuf = (bitBuf << 8) | bytes[byteIdx++]
+      bitsLeft += 8
+    }
+    bitsLeft -= 5
+    str += ENCODING[(bitBuf >> bitsLeft) & 0x1f]
   }
   return str
 }
 
+function freshRandomBytes(): Uint8Array {
+  const bytes = new Uint8Array(10)
+  for (let i = 0; i < 10; i++) {
+    bytes[i] = Math.floor(Math.random() * 256)
+  }
+  return bytes
+}
+
+// Increment an 80-bit value stored in a Uint8Array (big-endian).
+// Returns true if overflow occurred (all bits were 1).
+function incrementBytes(bytes: Uint8Array): boolean {
+  for (let i = bytes.length - 1; i >= 0; i--) {
+    if (bytes[i] < 255) {
+      bytes[i]++
+      return false
+    }
+    bytes[i] = 0
+  }
+  return true // overflow: all bytes wrapped to 0
+}
+
+// Monotonic ULID state
+let lastTimestamp = -1
+let lastRandom = new Uint8Array(10)
+
 /**
  * Generates a ULID: 26-char, lexicographically sortable, timestamp-embedded.
  * Format: 10 timestamp chars + 16 random chars
+ *
+ * Implements ULID monotonicity: within the same millisecond, increments the
+ * random portion rather than generating a fresh one, guaranteeing sort order.
  */
 export function newSessionId(): string {
-  const ms = Date.now()
-  return encodeTime(ms, 10) + encodeRandom(16)
+  let ms = Date.now()
+
+  if (ms === lastTimestamp) {
+    const overflow = incrementBytes(lastRandom)
+    if (overflow) {
+      // Advance timestamp by 1 ms to avoid collision
+      ms = lastTimestamp + 1
+      lastTimestamp = ms
+      lastRandom = freshRandomBytes()
+    }
+  } else {
+    lastTimestamp = ms
+    lastRandom = freshRandomBytes()
+  }
+
+  return encodeTime(ms, 10) + encodeRandomBytes(lastRandom)
 }
 
 // ─── Hash ────────────────────────────────────────────────────────────────────
