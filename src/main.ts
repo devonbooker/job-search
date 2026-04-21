@@ -60,7 +60,7 @@ async function main() {
   }
 
   const token = loadOrCreateToken(TOKEN_PATH)
-  const app = createApp({ httpApiAgent, token })
+  const app = createApp({ httpApiAgent, token, anthropic })
 
   const server = Bun.serve({
     hostname: '127.0.0.1',

@@ -32,7 +32,7 @@ describe('integration: HTTP → HTTP_API → ORCHESTRATOR → HTTP_API', () => {
     const anthropic = new Anthropic({ apiKey: 'test-key' })
     const httpApiAgent = new HttpApiAgent(queue, anthropic)
     const orchestrator = new Orchestrator(queue, anthropic, store)
-    const app = createApp({ httpApiAgent, token: TOKEN })
+    const app = createApp({ httpApiAgent, token: TOKEN, anthropic })
 
     const run1 = httpApiAgent.run()
     const run2 = orchestrator.run()

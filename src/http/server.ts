@@ -1,13 +1,16 @@
 import { Hono, type MiddlewareHandler } from 'hono'
 import { serveStatic } from 'hono/bun'
+import type Anthropic from '@anthropic-ai/sdk'
 import type { HttpApiAgent } from './http-api-agent'
 import { mountSessionRoutes } from './routes/sessions'
 import { mountSseRoutes } from './routes/sse'
 import { mountJobRoutes } from './routes/jobs'
+import { mountDrillRoutes } from './routes/drill'
 
 export interface AppDeps {
   httpApiAgent: HttpApiAgent
   token: string
+  anthropic: Anthropic
 }
 
 export function createApp(deps: AppDeps) {
@@ -28,6 +31,7 @@ export function createApp(deps: AppDeps) {
   mountSessionRoutes(app, deps.httpApiAgent)
   mountSseRoutes(app, deps.httpApiAgent)
   mountJobRoutes(app)
+  mountDrillRoutes(app, { anthropic: deps.anthropic })
 
   app.use('/*', serveStatic({ root: './dist/web' }))
   app.notFound((c) => {

@@ -16,8 +16,9 @@ describe('auth middleware', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
-    app = createApp({ httpApiAgent: agent, token: TOKEN })
+    const anthropic = new Anthropic({ apiKey: 'test-key' })
+    agent = new HttpApiAgent(queue, anthropic)
+    app = createApp({ httpApiAgent: agent, token: TOKEN, anthropic })
   })
 
   afterEach(() => {
@@ -47,8 +48,9 @@ describe('POST /sessions', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
-    app = createApp({ httpApiAgent: agent, token: TOKEN })
+    const anthropic = new Anthropic({ apiKey: 'test-key' })
+    agent = new HttpApiAgent(queue, anthropic)
+    app = createApp({ httpApiAgent: agent, token: TOKEN, anthropic })
   })
 
   afterEach(() => {
@@ -89,8 +91,9 @@ describe('GET /sessions/:id', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
-    app = createApp({ httpApiAgent: agent, token: TOKEN })
+    const anthropic = new Anthropic({ apiKey: 'test-key' })
+    agent = new HttpApiAgent(queue, anthropic)
+    app = createApp({ httpApiAgent: agent, token: TOKEN, anthropic })
   })
 
   afterEach(() => {
@@ -124,8 +127,9 @@ describe('Jobs CRUD', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
-    app = createApp({ httpApiAgent: agent, token: TOKEN })
+    const anthropic = new Anthropic({ apiKey: 'test-key' })
+    agent = new HttpApiAgent(queue, anthropic)
+    app = createApp({ httpApiAgent: agent, token: TOKEN, anthropic })
   })
 
   afterEach(() => {
@@ -150,8 +154,9 @@ describe('select-titles + approve-resume routes', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
-    app = createApp({ httpApiAgent: agent, token: TOKEN })
+    const anthropic = new Anthropic({ apiKey: 'test-key' })
+    agent = new HttpApiAgent(queue, anthropic)
+    app = createApp({ httpApiAgent: agent, token: TOKEN, anthropic })
   })
 
   afterEach(() => {
