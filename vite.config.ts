@@ -14,6 +14,7 @@ export default defineConfig({
       '/sessions': 'http://localhost:3000',
       '/jobs': 'http://localhost:3000',
       '/config': 'http://localhost:3000',
+      '/drill/api': 'http://localhost:3000',
     },
   },
   test: {
