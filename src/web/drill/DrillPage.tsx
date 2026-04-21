@@ -125,7 +125,7 @@ export function DrillPage() {
       if (result.status === 502) {
         // Model hiccup — show retry
         setRetryText(text)
-        setSubmitError("Model hiccuped - click Retry to try again")
+        setSubmitError("Model hiccuped - click Continue to retry")
         return
       }
       setSubmitError(result.message ?? result.error)
@@ -311,7 +311,7 @@ export function DrillPage() {
                   fontSize: 13,
                 }}
               >
-                Retry
+                Continue to retry
               </button>
             )}
           </div>
