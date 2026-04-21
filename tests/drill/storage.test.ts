@@ -91,6 +91,8 @@ describe('appendEvent / readSession', () => {
       jd_hash: hashInput('jd'),
       resume_preview: 'Senior engineer...',
       jd_preview: 'We are hiring...',
+      resume: 'Senior engineer full text',
+      job_description: 'We are hiring full text',
     }
 
     await appendEvent(event, jsonlPath)
@@ -143,6 +145,8 @@ describe('appendEvent / readSession', () => {
       jd_hash: hashInput('j'),
       resume_preview: 'r',
       jd_preview: 'j',
+      resume: 'r full',
+      job_description: 'j full',
     }
     const e2: DrillEvent = {
       session_id: otherSid,
@@ -183,6 +187,8 @@ describe('appendEvent / readSession', () => {
       jd_hash: hashInput('j'),
       resume_preview: 'r',
       jd_preview: 'j',
+      resume: 'r full',
+      job_description: 'j full',
     }, jsonlPath)
 
     await appendEvent({

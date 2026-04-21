@@ -120,7 +120,7 @@ describe('startSession', () => {
     expect(questionEvent.turn).toBe(1)
   })
 
-  test('start event has correct hash and preview fields', async () => {
+  test('start event has correct hash, preview, and full-text fields', async () => {
     const deps = makeDeps([JSON.stringify(goodDrillTurn())])
     const result = await startSession({ resume: RESUME, jobDescription: JD }, deps)
 
@@ -132,6 +132,8 @@ describe('startSession', () => {
     expect(startEvent.jd_hash).toMatch(/^sha256:[0-9a-f]{64}$/)
     expect(startEvent.resume_preview).toBe(RESUME.slice(0, 120))
     expect(startEvent.jd_preview).toBe(JD.slice(0, 120))
+    expect(startEvent.resume).toBe(RESUME)
+    expect(startEvent.job_description).toBe(JD)
   })
 
   test('uses fixed timestamp from now() dep', async () => {

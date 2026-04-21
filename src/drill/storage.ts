@@ -5,7 +5,7 @@ import { dirname } from 'path'
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type DrillEvent =
-  | { session_id: string; event: 'start'; ts: string; resume_hash: string; jd_hash: string; resume_preview: string; jd_preview: string }
+  | { session_id: string; event: 'start'; ts: string; resume_hash: string; jd_hash: string; resume_preview: string; jd_preview: string; resume: string; job_description: string }
   | { session_id: string; event: 'question'; ts: string; turn: number; text: string }
   | { session_id: string; event: 'answer'; ts: string; turn: number; text: string; model_assessment: 'weak' | 'partial' | 'solid' }
   | { session_id: string; event: 'reopen'; ts: string; user_agent: string }

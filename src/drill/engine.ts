@@ -152,16 +152,8 @@ function buildVerdictContext(events: DrillEvent[]): string {
     throw new Error('No start event found in session')
   }
 
-  // We store previews, not full text. The start event has previews but not full text.
-  // For the verdict, we'll use the previews as the best available data.
-  // NOTE: If the handler stores full resume/JD separately, it would be passed in.
-  // For now, use the previews - this is a known limitation documented below.
-  // DESIGN DECISION: The start event only stores resume_preview (120 chars) + hash,
-  // not full text. The verdict context will use previews. If full text is needed,
-  // the caller should pass it or the start event format would need to change.
-  // For now, previews serve as the resume/JD context for Opus.
-  const resumeText = startEvent.resume_preview
-  const jdText = startEvent.jd_preview
+  const resumeText = startEvent.resume
+  const jdText = startEvent.job_description
 
   const questionEvents = events.filter(
     (e): e is Extract<DrillEvent, { event: 'question' }> => e.event === 'question'
@@ -213,6 +205,8 @@ export async function startSession(
       jd_hash: hashInput(jobDescription),
       resume_preview: resume.slice(0, PREVIEW_LENGTH),
       jd_preview: jobDescription.slice(0, PREVIEW_LENGTH),
+      resume,
+      job_description: jobDescription,
     },
     fp,
   )
@@ -316,8 +310,8 @@ export async function submitAnswer(
   ]
 
   const userMessage = buildDrillUserMessage({
-    resume: startEvent.resume_preview,
-    jobDescription: startEvent.jd_preview,
+    resume: startEvent.resume,
+    jobDescription: startEvent.job_description,
     turn: currentTurn + 1,
     priorTranscript: fullTranscript,
   })
