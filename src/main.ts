@@ -66,6 +66,9 @@ async function main() {
     hostname: '127.0.0.1',
     port: PORT,
     fetch: app.fetch,
+    // Opus verdict calls on /drill/api/*/finish take 20-40s; default 10s drops
+    // the socket mid-response.
+    idleTimeout: 180,
   })
 
   console.log(`Server ready: http://localhost:${server.port}?token=${token}`)

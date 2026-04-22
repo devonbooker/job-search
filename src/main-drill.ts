@@ -25,6 +25,9 @@ async function main() {
     hostname: '127.0.0.1',
     port: PORT,
     fetch: app.fetch,
+    // Opus verdict calls routinely take 20-40s; default 10s drops the socket
+    // mid-response (curl "Empty reply from server" / browser ERR_EMPTY_RESPONSE).
+    idleTimeout: 180,
   })
 
   console.log(`Drill dev server: http://localhost:${server.port}/drill`)
