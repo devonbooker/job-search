@@ -21,6 +21,46 @@ const OPUS_MODEL = 'claude-opus-4-7'
 const MAX_TURNS = 12
 const PREVIEW_LENGTH = 120
 
+// Forcing Opus to emit the verdict via a tool call guarantees schema-valid JSON.
+// Text-mode JSON output hit "Unterminated string" parse failures when long
+// string fields (how_to_fix, model_answer, interviewer_verdict) contained
+// em-dashes, embedded quotes, or multi-sentence prose.
+const SUBMIT_VERDICT_TOOL = {
+  name: 'submit_verdict',
+  description: 'Submit the structured post-drill verdict for the candidate.',
+  input_schema: {
+    type: 'object' as const,
+    properties: {
+      target_role: { type: 'string' as const, description: 'Inferred from the JD, e.g. "Senior Cloud Security Engineer, Series-B startup"' },
+      project_drilled: { type: 'string' as const, description: 'The primary resume project the drill focused on' },
+      solid: {
+        type: 'array' as const,
+        items: { type: 'string' as const },
+        description: 'Array of plain strings describing demonstrated strengths. At least one entry required.',
+      },
+      weak: {
+        type: 'array' as const,
+        items: {
+          type: 'object' as const,
+          properties: {
+            area: { type: 'string' as const },
+            why: { type: 'string' as const },
+            example_question: { type: 'string' as const, description: 'Verbatim from the transcript' },
+            how_to_fix: { type: 'string' as const, description: '3-5 sentences: concepts, docs, practice reps' },
+            model_answer: { type: 'string' as const, description: '2-4 sentences showing what a solid answer sounds like' },
+          },
+          required: ['area', 'why', 'example_question', 'how_to_fix', 'model_answer'],
+        },
+        description: 'Array of weak-area objects. At least one entry required.',
+      },
+      interviewer_verdict: { type: 'string' as const, description: '2-3 sentences: phone screen / on-site / study gap in weeks' },
+      overall: { type: 'string' as const, enum: ['Solid', 'Borderline', 'Needs work'] },
+      overall_summary: { type: 'string' as const },
+    },
+    required: ['target_role', 'project_drilled', 'solid', 'weak', 'interviewer_verdict', 'overall', 'overall_summary'],
+  },
+}
+
 // ─── Deps ─────────────────────────────────────────────────────────────────────
 
 export interface EngineDeps {
@@ -445,9 +485,16 @@ export async function finishSession(
   const turnsCompleted = events.filter(e => e.event === 'answer').length
   const context = buildVerdictContext(events)
 
-  let rawResponse: string
+  let response: Awaited<ReturnType<typeof deps.anthropic.messages.create>>
   try {
-    rawResponse = await callModel(deps.anthropic, OPUS_MODEL, VERDICT_SYSTEM, context, 8000)
+    response = await deps.anthropic.messages.create({
+      model: OPUS_MODEL,
+      max_tokens: 8000,
+      system: VERDICT_SYSTEM,
+      messages: [{ role: 'user', content: context }],
+      tools: [SUBMIT_VERDICT_TOOL],
+      tool_choice: { type: 'tool', name: 'submit_verdict' },
+    })
   } catch (cause) {
     await appendEvent(
       {
@@ -462,23 +509,24 @@ export async function finishSession(
     throw new VerdictGenerationError('Opus API call failed during finishSession', { code: 'opus_error', sessionId, cause })
   }
 
-  let verdict: Verdict
-  try {
-    verdict = parseModelJson<Verdict>(rawResponse)
-    if (typeof verdict.target_role !== 'string') throw new Error('Missing target_role field')
-  } catch (cause) {
+  const toolBlock = response.content.find(
+    (b): b is Extract<typeof response.content[number], { type: 'tool_use' }> => b.type === 'tool_use',
+  )
+  if (!toolBlock || toolBlock.name !== 'submit_verdict') {
     await appendEvent(
       {
         session_id: sessionId,
         event: 'error',
         ts: ts(deps),
         stage: 'verdict',
-        message: `Failed to parse Opus response (stage=verdict, session=${sessionId}, turn=${turnsCompleted}): ${cause instanceof Error ? cause.message : String(cause)}`,
+        message: `Opus did not return submit_verdict tool_use block (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
       },
       ep,
     )
-    throw new VerdictGenerationError('Failed to parse Opus verdict response', { code: 'parse_error', sessionId, cause })
+    throw new VerdictGenerationError('Opus did not return submit_verdict tool_use block', { code: 'parse_error', sessionId })
   }
+
+  const verdict = toolBlock.input as Verdict
 
   // Validate the verdict constraints
   if (!Array.isArray(verdict.solid) || verdict.solid.length < 1) {

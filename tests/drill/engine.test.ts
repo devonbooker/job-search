@@ -18,21 +18,36 @@ import type { EngineDeps } from '../../src/drill/engine'
 
 // ─── Stub Anthropic client ────────────────────────────────────────────────────
 
+type StubBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+
 interface StubMessage {
-  content: Array<{ type: 'text'; text: string }>
+  content: StubBlock[]
 }
+
+type StubParams = { tools?: Array<{ name: string }> }
 
 /**
  * Minimal stub for the Anthropic messages.create() call.
  * Responses are consumed in FIFO order per call to messages.create.
+ *
+ * - String responses → { content: [{ type: 'text', text }] } (drill turns)
+ * - Object responses → if the call includes `tools`, returns a tool_use block
+ *   whose `input` is the object; otherwise serializes as text.
  */
-function makeStubAnthropic(responses: string[]): EngineDeps['anthropic'] {
+function makeStubAnthropic(responses: Array<string | object>): EngineDeps['anthropic'] {
   const queue = [...responses]
   return {
     messages: {
-      create: async (_params: unknown): Promise<StubMessage> => {
+      create: async (params: StubParams): Promise<StubMessage> => {
         if (queue.length === 0) throw new Error('No more stub responses queued')
-        const text = queue.shift()!
+        const item = queue.shift()!
+        if (params.tools && typeof item === 'object') {
+          const toolName = params.tools[0]?.name ?? 'submit_verdict'
+          return { content: [{ type: 'tool_use', id: 'stub_tool_call', name: toolName, input: item }] }
+        }
+        const text = typeof item === 'string' ? item : JSON.stringify(item)
         return { content: [{ type: 'text', text }] }
       },
     },
@@ -329,7 +344,7 @@ describe('submitAnswer - completed session guard', () => {
   test('throws DrillTurnError and logs error event when session already has finish event', async () => {
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      JSON.stringify(goodVerdict),
+      goodVerdict,
     ])
 
     const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
@@ -354,7 +369,7 @@ describe('finishSession', () => {
   test('writes finish event with verdict from stubbed Opus, returns verdict', async () => {
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      JSON.stringify(goodVerdict),
+      goodVerdict,
     ])
 
     const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
@@ -378,7 +393,7 @@ describe('finishSession - idempotent', () => {
   test('calling twice does not double-write and returns same verdict', async () => {
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      JSON.stringify(goodVerdict),
+      goodVerdict,
       // Second finishSession call should NOT call Opus again (idempotent)
       // If it does, this would throw "No more stub responses queued"
     ])
@@ -406,7 +421,7 @@ describe('finishSession - verdict validation', () => {
 
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      JSON.stringify(badVerdict),
+      badVerdict,
     ])
 
     const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
@@ -429,7 +444,7 @@ describe('finishSession - verdict validation', () => {
 
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      JSON.stringify(badVerdict),
+      badVerdict,
     ])
 
     const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
@@ -438,16 +453,22 @@ describe('finishSession - verdict validation', () => {
       .rejects.toBeInstanceOf(VerdictGenerationError)
   })
 
-  test('throws VerdictGenerationError when Opus returns malformed JSON, logs error', async () => {
+  test('throws VerdictGenerationError when Opus returns text instead of tool_use, logs error', async () => {
+    // String response on a tool-enabled call: stub emits a text block, not a
+    // tool_use block. Engine must detect missing submit_verdict tool call.
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      'totally not json',
+      'I refuse to call the tool.',
     ])
 
     const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
 
     await expect(finishSession(sessionId, deps))
       .rejects.toBeInstanceOf(VerdictGenerationError)
+
+    const events = await getEvents(sessionId)
+    const errorEvent = events.find(e => e.event === 'error' && e.message.includes('submit_verdict'))
+    expect(errorEvent).toBeDefined()
   })
 })
 
@@ -490,7 +511,7 @@ describe('getSession - complete', () => {
   test("returns status 'complete' + verdict for finished session", async () => {
     const deps = makeDeps([
       JSON.stringify(goodDrillTurn('Q1')),
-      JSON.stringify(goodVerdict),
+      goodVerdict,
     ])
 
     const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)

@@ -10,13 +10,20 @@ import { HttpApiAgent } from '../../src/http/http-api-agent'
 
 // ─── Stub helpers ─────────────────────────────────────────────────────────────
 
-/** Build a fake Anthropic messages.create response with the given text content */
-function fakeMessage(text: string): Anthropic.Message {
+type StubContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: unknown }
+
+/** Build a fake Anthropic messages.create response. Accepts either a text string (wrapped as a text block) or a content block array. */
+function fakeMessage(contentOrText: string | StubContentBlock[]): Anthropic.Message {
+  const content: StubContentBlock[] = typeof contentOrText === 'string'
+    ? [{ type: 'text', text: contentOrText }]
+    : contentOrText
   return {
     id: 'msg_stub',
     type: 'message',
     role: 'assistant',
-    content: [{ type: 'text', text }],
+    content,
     model: 'claude-sonnet-4-6',
     stop_reason: 'end_turn',
     stop_sequence: null,
@@ -24,7 +31,7 @@ function fakeMessage(text: string): Anthropic.Message {
   } as unknown as Anthropic.Message
 }
 
-/** Drill turn response JSON (Sonnet format) */
+/** Drill turn response JSON (Sonnet format, text-mode) */
 function drillTurnJson(
   question: string,
   assessment: 'weak' | 'partial' | 'solid',
@@ -33,9 +40,9 @@ function drillTurnJson(
   return JSON.stringify({ question, model_assessment: assessment, early_terminate: earlyTerminate })
 }
 
-/** Verdict JSON (Opus format) */
-function verdictJson(): string {
-  return JSON.stringify({
+/** Verdict object (Opus tool-use format) */
+function verdictObject(): object {
+  return {
     target_role: 'Security Infrastructure Engineer',
     project_drilled: 'Container security hardening project',
     solid: ['Strong understanding of WAF rule tuning and count-mode testing methodology'],
@@ -44,23 +51,34 @@ function verdictJson(): string {
         area: 'Kubernetes RBAC depth',
         why: 'Named the tool but could not explain binding scopes',
         example_question: 'Walk me through how you scoped RBAC roles in that cluster.',
+        how_to_fix: 'Review K8s RBAC docs.',
+        model_answer: 'A solid answer would cite specific role bindings.',
       },
     ],
     interviewer_verdict: 'Advance to phone screen. Candidate owns the basics but needs 2-3 weeks on K8s RBAC specifics.',
     overall: 'Borderline',
     overall_summary: 'Solid on WAF, gaps on orchestration internals.',
-  })
+  }
 }
 
-/** Create a stubbed Anthropic client where messages.create returns responses in order */
-function createStubbedAnthropic(responses: string[]): Anthropic {
+/**
+ * Create a stubbed Anthropic client where messages.create returns responses in order.
+ * - String responses → text block (drill turn format)
+ * - Object responses → tool_use block (verdict format) when called with `tools`
+ */
+function createStubbedAnthropic(responses: Array<string | object>): Anthropic {
   let callIndex = 0
   const stub = {
     messages: {
-      create: async (_opts: unknown) => {
-        const text = responses[callIndex] ?? responses[responses.length - 1]
+      create: async (opts: { tools?: Array<{ name: string }> }) => {
+        const item = responses[callIndex] ?? responses[responses.length - 1]
         callIndex++
-        return fakeMessage(text)
+        if (opts.tools && typeof item === 'object') {
+          const toolName = opts.tools[0]?.name ?? 'submit_verdict'
+          return fakeMessage([{ type: 'tool_use', id: 'stub_tool_call', name: toolName, input: item }])
+        }
+        const text = typeof item === 'string' ? item : JSON.stringify(item)
+        return fakeMessage([{ type: 'text', text }])
       },
     },
   } as unknown as Anthropic
@@ -133,7 +151,7 @@ describe('Drill integration: full end-to-end flow', () => {
       // submitAnswer turn 5
       drillTurnJson('How did you test that the WAF rules did not break legitimate traffic?', 'partial'),
       // finishSession Opus call
-      verdictJson(),
+      verdictObject(),
     ]
 
     const anthropic = createStubbedAnthropic(stubbedResponses)

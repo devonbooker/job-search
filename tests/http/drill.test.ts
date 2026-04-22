@@ -17,16 +17,32 @@ const SONNET_RESPONSE = JSON.stringify({
   early_terminate: false,
 })
 
-// Minimal valid Opus (verdict) response
-const VERDICT_RESPONSE = JSON.stringify({
+// Minimal valid Opus (verdict) response - emitted as tool_use input
+const VERDICT_OBJECT = {
   target_role: 'Cloud Security Engineer',
-  overall: 'strong',
+  project_drilled: 'Container security project',
   solid: ['Container security knowledge'],
-  weak: ['Public cloud breadth'],
-  recommendation: 'Proceed to onsite',
-})
+  weak: [
+    {
+      area: 'Public cloud breadth',
+      why: 'Limited exposure outside AWS',
+      example_question: 'How would you handle this in GCP?',
+      how_to_fix: 'Study GCP IAM fundamentals.',
+      model_answer: 'I would leverage GCP service accounts with least privilege.',
+    },
+  ],
+  interviewer_verdict: 'Proceed to onsite with a 2-week study plan on GCP.',
+  overall: 'Solid' as const,
+  overall_summary: 'Strong AWS foundation, minor GCP gap.',
+}
 
-function makeApp(testFilePath: string, anthropicOverride?: { messages: { create: () => unknown } }) {
+function verdictToolUse() {
+  return {
+    content: [{ type: 'tool_use', id: 'stub_tool_call', name: 'submit_verdict', input: VERDICT_OBJECT }],
+  }
+}
+
+function makeApp(testFilePath: string, anthropicOverride?: { messages: { create: (opts?: unknown) => unknown } }) {
   const anthropic = (anthropicOverride ?? {
     messages: {
       create: async () => ({
@@ -288,7 +304,7 @@ describe('POST /drill/api/sessions/:id/answer - 409 on completed session', () =>
           if (callCount <= 4) {
             return { content: [{ type: 'text', text: SONNET_RESPONSE }] }
           }
-          return { content: [{ type: 'text', text: VERDICT_RESPONSE }] }
+          return verdictToolUse()
         },
       },
     }
@@ -390,7 +406,7 @@ describe('POST /drill/api/sessions/:id/finish', () => {
           if (callCount <= 4) {
             return { content: [{ type: 'text', text: SONNET_RESPONSE }] }
           }
-          return { content: [{ type: 'text', text: VERDICT_RESPONSE }] }
+          return verdictToolUse()
         },
       },
     }
@@ -417,7 +433,7 @@ describe('POST /drill/api/sessions/:id/finish', () => {
             return { content: [{ type: 'text', text: SONNET_RESPONSE }] }
           }
           // Only first finishSession call hits Opus; second is idempotent (no API call)
-          return { content: [{ type: 'text', text: VERDICT_RESPONSE }] }
+          return verdictToolUse()
         },
       },
     }
