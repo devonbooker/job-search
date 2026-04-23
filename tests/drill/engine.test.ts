@@ -338,6 +338,61 @@ describe('submitAnswer - malformed JSON from Sonnet', () => {
   })
 })
 
+// ─── 5a. submitAnswer - concurrent calls serialize via in-flight lock ────────
+
+describe('submitAnswer - per-session in-flight lock', () => {
+  test('concurrent submitAnswer calls for the same session serialize (no duplicate turn events)', async () => {
+    // Build a stub that releases Sonnet responses on demand but counts concurrent calls.
+    // If the lock works, Sonnet is called sequentially not in parallel.
+    let inFlight = 0
+    let maxConcurrent = 0
+    const anthropic = {
+      messages: {
+        create: async (_params: unknown) => {
+          inFlight++
+          maxConcurrent = Math.max(maxConcurrent, inFlight)
+          await new Promise(r => setTimeout(r, 20))
+          inFlight--
+          return { content: [{ type: 'text', text: JSON.stringify(goodDrillTurn('Q_next')) }] }
+        },
+      },
+    } as unknown as EngineDeps['anthropic']
+
+    const deps: EngineDeps = {
+      anthropic,
+      storageFilePath: jsonlPath,
+      now: () => fixedNow,
+    }
+
+    // Seed a session with turn 1 Q already written
+    const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
+
+    // Fire 3 concurrent submitAnswer calls (simulates double/triple-click)
+    const results = await Promise.all([
+      submitAnswer({ sessionId, answerText: 'My first answer is detailed and specific.' }, deps),
+      submitAnswer({ sessionId, answerText: 'My second answer is also detailed.' }, deps),
+      submitAnswer({ sessionId, answerText: 'My third answer is likewise detailed.' }, deps),
+    ])
+
+    // Lock should have kept Opus/Sonnet calls strictly sequential for THIS session
+    // (startSession is before the Promise.all, so its Sonnet call isn't counted here —
+    // we expect maxConcurrent to be 1 for the 3 parallel submits).
+    expect(maxConcurrent).toBeLessThanOrEqual(1)
+
+    // All 3 should have succeeded. Turn numbers should be 1, 2, 3 (no duplicates).
+    const turns = results.map(r => r.turnsCompleted).sort()
+    expect(turns).toEqual([1, 2, 3])
+
+    // JSONL should have 3 answer events at turns 1/2/3 (not 3 all with turn=1).
+    const events = await getEvents(sessionId)
+    const answerTurns = events
+      .filter((e): e is Extract<DrillEvent, { event: 'answer' }> => e.event === 'answer')
+      .map(e => e.turn)
+      .sort()
+    expect(answerTurns).toEqual([1, 2, 3])
+  })
+})
+
 // ─── 5b. submitAnswer - completed session guard ───────────────────────────────
 
 describe('submitAnswer - completed session guard', () => {

@@ -62,6 +62,85 @@ function makeApp(testFilePath: string, anthropicOverride?: { messages: { create:
   return app
 }
 
+// ─── POST /drill/api/start — shared-secret gate ──────────────────────────────
+
+describe('POST /drill/api/start - DRILL_START_TOKEN gate', () => {
+  let tmpDir: string
+  let testFile: string
+  const originalToken = process.env.DRILL_START_TOKEN
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'drill-gate-'))
+    testFile = join(tmpDir, 'sessions.jsonl')
+  })
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true })
+    if (originalToken === undefined) delete process.env.DRILL_START_TOKEN
+    else process.env.DRILL_START_TOKEN = originalToken
+  })
+
+  test('403 when DRILL_START_TOKEN set but no token supplied', async () => {
+    process.env.DRILL_START_TOKEN = 'secret-invite-token-32chars-long'
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(res.status).toBe(403)
+    const body = await res.json() as { error: string }
+    expect(body.error).toBe('invalid_start_token')
+  })
+
+  test('403 when wrong token supplied', async () => {
+    process.env.DRILL_START_TOKEN = 'secret-invite-token-32chars-long'
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start?k=wrong-token-same-length-xx-xxx', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(res.status).toBe(403)
+  })
+
+  test('200 when correct token supplied via ?k= query param', async () => {
+    process.env.DRILL_START_TOKEN = 'secret-invite-token-32chars-long'
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start?k=secret-invite-token-32chars-long', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(res.status).toBe(200)
+  })
+
+  test('200 when correct token supplied via X-Drill-Token header', async () => {
+    process.env.DRILL_START_TOKEN = 'secret-invite-token-32chars-long'
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'X-Drill-Token': 'secret-invite-token-32chars-long',
+      },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(res.status).toBe(200)
+  })
+
+  test('gate is disabled when DRILL_START_TOKEN is unset (dev ergonomics)', async () => {
+    delete process.env.DRILL_START_TOKEN
+    const app = makeApp(testFile)
+    const res = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(res.status).toBe(200)
+  })
+})
+
 // ─── POST /drill/api/start ────────────────────────────────────────────────────
 
 describe('POST /drill/api/start', () => {

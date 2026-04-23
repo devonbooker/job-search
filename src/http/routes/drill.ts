@@ -21,7 +21,22 @@ const ERROR_CODE = {
   DRILL_START_FAILED: 'drill_start_failed',
   DRILL_TURN_FAILED: 'drill_turn_failed',
   VERDICT_FAILED: 'verdict_failed',
+  INVALID_START_TOKEN: 'invalid_start_token',
 } as const
+
+// Shared-secret gate on POST /drill/api/start. Prevents random internet traffic
+// from burning Opus/Sonnet budget against a public URL. When DRILL_START_TOKEN
+// is unset (dev default), the gate is disabled — keeps local dev ergonomic.
+//
+// Callers pass the token via either `?k=<token>` query param or
+// `X-Drill-Token: <token>` header. The DM link Devon sends to Preston embeds
+// `?k=<token>` so he doesn't have to do anything.
+function isStartTokenValid(supplied: string, expected: string): boolean {
+  if (!supplied || supplied.length !== expected.length) return false
+  let diff = 0
+  for (let i = 0; i < supplied.length; i++) diff |= supplied.charCodeAt(i) ^ expected.charCodeAt(i)
+  return diff === 0
+}
 
 // ─── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -54,6 +69,17 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
   // Body: { resume: string, jobDescription: string }
   // Returns: { sessionId, firstQuestion }
   app.post('/drill/api/start', async (c) => {
+    const expectedToken = process.env.DRILL_START_TOKEN
+    if (expectedToken) {
+      const supplied = c.req.query('k') ?? c.req.header('X-Drill-Token') ?? ''
+      if (!isStartTokenValid(supplied, expectedToken)) {
+        return c.json(
+          { error: ERROR_CODE.INVALID_START_TOKEN, message: 'Drill is invite-only. Use the link Devon sent you.' },
+          403,
+        )
+      }
+    }
+
     const raw = await c.req.json().catch(() => null)
     const parsed = startBodySchema.safeParse(raw)
     if (!parsed.success) {

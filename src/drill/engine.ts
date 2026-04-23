@@ -197,6 +197,8 @@ function buildPriorTranscript(
 
 /**
  * Build the full verdict context string from events (resume + JD + transcript).
+ * User-paste fields are wrapped in XML tags and sanitized — VERDICT_SYSTEM instructs
+ * Opus to treat that content as untrusted data, not instructions. See prompts.ts.
  */
 function buildVerdictContext(events: DrillEvent[]): string {
   const startEvent = events.find(e => e.event === 'start')
@@ -204,8 +206,15 @@ function buildVerdictContext(events: DrillEvent[]): string {
     throw new Error('No start event found in session')
   }
 
-  const resumeText = startEvent.resume
-  const jdText = startEvent.job_description
+  const sanitize = (text: string): string =>
+    text
+      .replace(/<\/resume>/gi, '&lt;/resume&gt;')
+      .replace(/<\/job_description>/gi, '&lt;/job_description&gt;')
+      .replace(/<\/project>/gi, '&lt;/project&gt;')
+
+  const resumeText = sanitize(startEvent.resume)
+  const jdText = sanitize(startEvent.job_description)
+  const projectText = startEvent.project ? sanitize(startEvent.project) : ''
 
   const questionEvents = events.filter(
     (e): e is Extract<DrillEvent, { event: 'question' }> => e.event === 'question'
@@ -215,10 +224,13 @@ function buildVerdictContext(events: DrillEvent[]): string {
   )
 
   const parts: string[] = [
-    `Resume:\n${resumeText}`,
-    `Job Description:\n${jdText}`,
-    'Transcript:',
+    `<resume>\n${resumeText}\n</resume>`,
+    `<job_description>\n${jdText}\n</job_description>`,
   ]
+  if (projectText) {
+    parts.push(`<project>\n${projectText}\n</project>`)
+  }
+  parts.push('Transcript:')
 
   for (const q of questionEvents) {
     parts.push(`Q${q.turn}: ${q.text}`)
@@ -325,6 +337,31 @@ export async function startSession(
   return { sessionId, firstQuestion: parsed.question }
 }
 
+// Per-session in-flight lock. Prevents concurrent submitAnswer / finishSession
+// calls for the same session from racing the "read events → compute currentTurn
+// → write answer + next question" sequence. Without this, a double-click across
+// two tabs or a slow network retry can write duplicate turn events with the
+// same turn number.
+//
+// Module-local map keyed by sessionId. Entry cleared in the finally handler so
+// the map doesn't grow unbounded.
+const inFlightSessionLocks = new Map<string, Promise<unknown>>()
+
+async function withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+  const prev = inFlightSessionLocks.get(sessionId) ?? Promise.resolve()
+  const task = prev.then(fn, fn)   // run regardless of predecessor outcome
+  inFlightSessionLocks.set(sessionId, task)
+  try {
+    return await task
+  } finally {
+    // Only clear if this task is still the head of the chain. If another call
+    // queued after us, it now owns the slot.
+    if (inFlightSessionLocks.get(sessionId) === task) {
+      inFlightSessionLocks.delete(sessionId)
+    }
+  }
+}
+
 /**
  * Submit an answer for the current turn. Calls Sonnet to rate the answer and
  * propose the next question. Enforces the 12-turn cap and early-terminate flag.
@@ -334,8 +371,18 @@ export async function startSession(
  * (Task 4) is responsible for calling finishSession separately. This keeps the
  * engine functions single-responsibility and avoids finishSession being called
  * implicitly without the handler knowing.
+ *
+ * Concurrent calls for the same sessionId serialize through withSessionLock
+ * to prevent duplicate turn events.
  */
 export async function submitAnswer(
+  input: { sessionId: string; answerText: string },
+  deps: EngineDeps,
+): Promise<SubmitAnswerResult> {
+  return withSessionLock(input.sessionId, () => submitAnswerImpl(input, deps))
+}
+
+async function submitAnswerImpl(
   input: { sessionId: string; answerText: string },
   deps: EngineDeps,
 ): Promise<SubmitAnswerResult> {
@@ -474,6 +521,13 @@ export async function submitAnswer(
  * that violates the at-least-1-solid, at-least-1-weak constraint.
  */
 export async function finishSession(
+  sessionId: string,
+  deps: EngineDeps,
+): Promise<Verdict> {
+  return withSessionLock(sessionId, () => finishSessionImpl(sessionId, deps))
+}
+
+async function finishSessionImpl(
   sessionId: string,
   deps: EngineDeps,
 ): Promise<Verdict> {
