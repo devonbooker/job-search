@@ -16,8 +16,9 @@ describe('GET /sessions/:id/events SSE', () => {
 
   beforeEach(() => {
     queue = new MessageQueue(TEST_DB)
-    agent = new HttpApiAgent(queue, new Anthropic({ apiKey: 'test-key' }))
-    app = createApp({ httpApiAgent: agent, token: TOKEN })
+    const anthropic = new Anthropic({ apiKey: 'test-key' })
+    agent = new HttpApiAgent(queue, anthropic)
+    app = createApp({ httpApiAgent: agent, token: TOKEN, anthropic })
   })
 
   afterEach(() => {

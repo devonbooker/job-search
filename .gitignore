@@ -1,9 +1,11 @@
 node_modules/
 dist/
+.worktrees/
 .env
 *.db
 *.db-shm
 *.db-wal
+data/
 .session-token
 .superpowers/
 .claude/
