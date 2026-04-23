@@ -413,10 +413,13 @@ describe('finishSession - idempotent', () => {
 // ─── 8. finishSession - invalid verdict (empty weak) ─────────────────────────
 
 describe('finishSession - verdict validation', () => {
-  test('throws VerdictGenerationError when Opus returns empty weak array, logs error', async () => {
+  test('throws VerdictGenerationError when Opus returns BOTH empty weak AND empty/missing not_probed, logs error', async () => {
+    // Relaxed constraint: weak can be empty if not_probed is populated. But if
+    // BOTH "areas to improve" surfaces are empty, the verdict is vapid and rejected.
     const badVerdict: Verdict = {
       ...goodVerdict,
-      weak: [], // violates the constraint
+      weak: [],
+      // not_probed omitted (undefined)
     }
 
     const deps = makeDeps([
@@ -434,6 +437,29 @@ describe('finishSession - verdict validation', () => {
     expect(errorEvent).toBeDefined()
     if (errorEvent?.event !== 'error') throw new Error()
     expect(errorEvent.stage).toBe('verdict')
+    expect(errorEvent.message).toMatch(/weak.*not_probed|not_probed.*weak/)
+  })
+
+  test('accepts empty weak array when not_probed is populated (no fabrication path)', async () => {
+    // The anti-fabrication path: pure-positive transcripts can legitimately
+    // have empty weak + populated not_probed. Opus is no longer instructed
+    // to invent weak entries.
+    const cleanVerdict: Verdict = {
+      ...goodVerdict,
+      weak: [],
+      not_probed: ['KMS cross-account key grants', 'Falco rule authoring under load'],
+    }
+
+    const deps = makeDeps([
+      JSON.stringify(goodDrillTurn('Q1')),
+      cleanVerdict,
+    ])
+
+    const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
+    const verdict = await finishSession(sessionId, deps)
+
+    expect(verdict.weak).toHaveLength(0)
+    expect(verdict.not_probed).toEqual(['KMS cross-account key grants', 'Falco rule authoring under load'])
   })
 
   test('throws VerdictGenerationError when Opus returns empty solid array, logs error', async () => {

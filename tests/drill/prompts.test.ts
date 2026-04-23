@@ -146,8 +146,18 @@ describe('VERDICT_SYSTEM', () => {
     expect(VERDICT_SYSTEM).toContain('"solid" MUST have at least 1 entry')
   })
 
-  test('exact-phrase regression: weak at-least-1 constraint present', () => {
-    expect(VERDICT_SYSTEM).toContain('"weak" MUST have at least 1 entry')
+  test('anti-fabrication: prompt does NOT instruct Opus to invent weak entries', () => {
+    // Pre-2026-04-22, VERDICT_SYSTEM told Opus to "invent a stretch area not yet probed"
+    // when transcript had zero weak moments. That violated the Wed 04-29 ship-gate's
+    // "zero outright fabrications" bar. Replaced with not_probed as a separate field.
+    expect(VERDICT_SYSTEM).not.toContain('invent a stretch area')
+    expect(VERDICT_SYSTEM).not.toContain('"weak" MUST have at least 1 entry')
+  })
+
+  test('not_probed guidance: prompt separates demonstrated weakness from unprobed topics', () => {
+    expect(VERDICT_SYSTEM).toContain('not_probed')
+    expect(VERDICT_SYSTEM).toContain('ONLY for topics the candidate actually demonstrated weakness')
+    expect(VERDICT_SYSTEM).toContain('At least one of "weak" or "not_probed" MUST be non-empty')
   })
 
   test('exact-phrase regression: solid is labeled as array of plain strings', () => {

@@ -53,6 +53,11 @@ const SUBMIT_VERDICT_TOOL = {
         },
         description: 'Array of weak-area objects. At least one entry required.',
       },
+      not_probed: {
+        type: 'array' as const,
+        items: { type: 'string' as const },
+        description: 'Areas the drill did not get to cover this session. Use this INSTEAD OF inventing weak entries when the transcript was genuinely clean. Optional.',
+      },
       interviewer_verdict: { type: 'string' as const, description: '2-3 sentences: phone screen / on-site / study gap in weeks' },
       overall: { type: 'string' as const, enum: ['Solid', 'Borderline', 'Needs work'] },
       overall_summary: { type: 'string' as const },
@@ -546,19 +551,40 @@ export async function finishSession(
     )
   }
 
-  if (!Array.isArray(verdict.weak) || verdict.weak.length < 1) {
+  // weak CAN be empty if not_probed is non-empty (genuine pure-positive transcripts
+  // no longer require Opus to invent a fake weak moment). But at least one of the
+  // two "areas to improve" surfaces must be populated so the verdict isn't vapid.
+  const hasWeak = Array.isArray(verdict.weak) && verdict.weak.length >= 1
+  const hasNotProbed = Array.isArray(verdict.not_probed) && verdict.not_probed.length >= 1
+  if (!Array.isArray(verdict.weak)) {
     await appendEvent(
       {
         session_id: sessionId,
         event: 'error',
         ts: ts(deps),
         stage: 'verdict',
-        message: `Verdict validation failed: "weak" must have at least 1 entry (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
+        message: `Verdict validation failed: "weak" must be an array (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
       },
       ep,
     )
     throw new VerdictGenerationError(
-      'Verdict validation failed: "weak" must have at least 1 entry',
+      'Verdict validation failed: "weak" must be an array',
+      { code: 'invalid_verdict', sessionId },
+    )
+  }
+  if (!hasWeak && !hasNotProbed) {
+    await appendEvent(
+      {
+        session_id: sessionId,
+        event: 'error',
+        ts: ts(deps),
+        stage: 'verdict',
+        message: `Verdict validation failed: at least one of "weak" or "not_probed" must be non-empty (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
+      },
+      ep,
+    )
+    throw new VerdictGenerationError(
+      'Verdict validation failed: at least one of "weak" or "not_probed" must be non-empty',
       { code: 'invalid_verdict', sessionId },
     )
   }

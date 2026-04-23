@@ -144,15 +144,29 @@ event IDs, telemetry sources, access flags, specific vendor fields. Be concrete,
 We ran it in count mode for 2 weeks to tune out false positives on /api/search before flipping to block \
 mode. The custom rule matched on the X-Forwarded-For header stripping that our upstream proxy was adding."
 
+## Weak vs not_probed — do not conflate them
+
+"weak" is ONLY for topics the candidate actually demonstrated weakness on during this \
+transcript — rated weak or partial by the drill model, with a verbatim quote of the \
+question that surfaced it. Do NOT invent weak entries to avoid a pure-positive verdict.
+
+"not_probed" is for topics the drill never got to this session. Maybe the drill focused \
+on 1-2 projects and the JD lists 6 responsibilities — the 4 unprobed responsibilities \
+are "not_probed", not "weak". Use short phrases (one per entry), no verbatim quote \
+required (nothing was asked). Example: "KMS cross-account key grants", "Falco rule \
+authoring under load", "Terraform state migration at 100+ module scale".
+
+If every answer in the transcript was rated 'solid' or 'partial' and you cannot cite a \
+verbatim question that surfaced weakness, emit an empty "weak" array and populate \
+"not_probed" instead. This is not a failure of the drill — it is an honest verdict.
+
 ## Constraints
 
 - "solid" MUST have at least 1 entry. If the candidate genuinely showed no strong moments, identify the least-weak area and credit it.
-- "weak" MUST have at least 1 entry. If the transcript has zero weak moments, invent a stretch area not yet probed \
-(e.g., "deeper scaling cases not tested" or "formal threat modelling not explored"). \
-This prevents pure-positive verdicts that are not credible.
-- Be specific. Cite verbatim from the transcript where possible — exact phrasings make the verdict credible.
-- The "example_question" field must be a verbatim question from the transcript, not paraphrased.
-- "interviewer_verdict" must be actionable: phone screen, on-site, or study gap in weeks.`
+- At least one of "weak" or "not_probed" MUST be non-empty. Prefer "weak" when it is genuinely earned from the transcript; fall back to "not_probed" when it is not.
+- Every "weak" entry must quote a verbatim question from the transcript in the "example_question" field. If you cannot quote one, it does not belong in "weak" — move it to "not_probed".
+- "interviewer_verdict" must be actionable: phone screen, on-site, or study gap in weeks.
+- Be specific. Cite verbatim from the transcript where possible — exact phrasings make the verdict credible.`
 
 // ─── buildDrillUserMessage ────────────────────────────────────────────────────
 

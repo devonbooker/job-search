@@ -109,6 +109,23 @@ export function VerdictPage({ verdict, transcript }: VerdictPageProps) {
         </div>
       )}
 
+      {/* Not probed this session — areas the drill didn't cover (NOT claimed weaknesses) */}
+      {verdict.not_probed && verdict.not_probed.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h3 style={{ color: 'var(--accent)', marginBottom: 8, fontSize: 14, textTransform: 'uppercase' }}>
+            Not probed this session
+          </h3>
+          <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 8, lineHeight: 1.5 }}>
+            Topics the drill didn&apos;t get to. These are not claimed weaknesses — just areas to cover in a future session.
+          </p>
+          <ul style={{ paddingLeft: 20, margin: 0 }}>
+            {verdict.not_probed.map((item, i) => (
+              <li key={i} style={{ marginBottom: 4, fontSize: 13, lineHeight: 1.5, color: 'var(--fg)' }}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* Overall summary */}
       {verdict.overall_summary && (
         <div style={{ color: 'var(--muted)', fontSize: 13, marginBottom: 24 }}>
