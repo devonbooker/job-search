@@ -62,11 +62,28 @@ export function DrillPage() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [retryText, setRetryText] = useState<string | null>(null)
   const [finishing, setFinishing] = useState(false)
+  const [verdictElapsed, setVerdictElapsed] = useState(0)
 
   // Track if we've already fetched to avoid double-fetch in StrictMode
   const fetchedRef = useRef(false)
   // Guard against concurrent finish calls (manual Finish button + auto-finish race)
   const finishInFlightRef = useRef(false)
+
+  // Elapsed-seconds counter while Opus generates the verdict. Covers both
+  // manual Finish and auto-finish (at 12-turn cap / early-terminate) paths.
+  // Preston needs to see something moving during the 20-45s wait, otherwise
+  // a silent UI looks frozen and he bails.
+  useEffect(() => {
+    if (!finishing) {
+      setVerdictElapsed(0)
+      return
+    }
+    const started = Date.now()
+    const tick = setInterval(() => {
+      setVerdictElapsed(Math.floor((Date.now() - started) / 1000))
+    }, 500)
+    return () => clearInterval(tick)
+  }, [finishing])
 
   useEffect(() => {
     if (!sessionId || fetchedRef.current) return
@@ -175,6 +192,7 @@ export function DrillPage() {
   async function handleFinishInternal(sid: string, completedEntries: DrillTranscriptEntry[]) {
     if (finishInFlightRef.current) return
     finishInFlightRef.current = true
+    setFinishing(true)  // drives the verdict-wait banner + elapsed counter for BOTH paths
     try {
       const result = await finishDrill(sid)
       if (!result.ok) {
@@ -189,18 +207,16 @@ export function DrillPage() {
       setState({ phase: 'verdict', verdict: result.data.verdict, transcript: completedEntries })
     } finally {
       finishInFlightRef.current = false
+      setFinishing(false)
     }
   }
 
   async function handleFinishClick() {
     if (!sessionId || state.phase !== 'drilling') return
-    setFinishing(true)
     setSubmitError(null)
-    try {
-      await handleFinishInternal(sessionId, state.completedEntries)
-    } finally {
-      setFinishing(false)
-    }
+    // finishing state is managed inside handleFinishInternal now so both
+    // manual-Finish and auto-finish paths show the wait banner identically.
+    await handleFinishInternal(sessionId, state.completedEntries)
   }
 
   async function handleRetry() {
@@ -245,6 +261,30 @@ export function DrillPage() {
 
   return (
     <div style={{ maxWidth: 720, margin: '40px auto', padding: '0 20px', fontFamily: 'monospace' }}>
+      {finishing && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            background: '#1e2a3a',
+            border: '1px solid #3a5a7a',
+            color: 'var(--accent)',
+            borderRadius: 4,
+            padding: '14px 16px',
+            marginBottom: 20,
+            fontSize: 14,
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+            Generating verdict... {verdictElapsed}s
+          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 13 }}>
+            This takes 20-45 seconds. Keep this tab open — closing it will lose the verdict.
+          </div>
+        </div>
+      )}
+
       <TranscriptView entries={completedEntries} />
 
       <div style={{

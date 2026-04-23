@@ -73,6 +73,7 @@ export interface EngineDeps {
   storageFilePath?: string  // for tests
   errorLogFilePath?: string // for tests (falls back to storageFilePath)
   now?: () => Date          // for deterministic test timestamps
+  opusRetryDelayMs?: number // override Opus 5xx/529 retry backoff (default 3000; tests pass 0)
 }
 
 // ─── Errors ───────────────────────────────────────────────────────────────────
@@ -490,28 +491,57 @@ export async function finishSession(
   const turnsCompleted = events.filter(e => e.event === 'answer').length
   const context = buildVerdictContext(events)
 
+  // Retry-once policy for transient Opus 5xx / 529 (overloaded). Anthropic
+  // 529s flash during peak hours; a single bad moment shouldn't blank Preston's
+  // verdict. Retry after 3s on retryable statuses, throw immediately on 4xx.
+  const isRetryableOpusError = (err: unknown): boolean => {
+    if (typeof err !== 'object' || err === null) return false
+    const status = (err as { status?: number }).status
+    return typeof status === 'number' && (status >= 500 || status === 529)
+  }
+  const opusCall = () => deps.anthropic.messages.create({
+    model: OPUS_MODEL,
+    max_tokens: 8000,
+    system: VERDICT_SYSTEM,
+    messages: [{ role: 'user', content: context }],
+    tools: [SUBMIT_VERDICT_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_verdict' },
+  })
+
   let response: Awaited<ReturnType<typeof deps.anthropic.messages.create>>
   try {
-    response = await deps.anthropic.messages.create({
-      model: OPUS_MODEL,
-      max_tokens: 8000,
-      system: VERDICT_SYSTEM,
-      messages: [{ role: 'user', content: context }],
-      tools: [SUBMIT_VERDICT_TOOL],
-      tool_choice: { type: 'tool', name: 'submit_verdict' },
-    })
-  } catch (cause) {
-    await appendEvent(
-      {
-        session_id: sessionId,
-        event: 'error',
-        ts: ts(deps),
-        stage: 'verdict',
-        message: `${cause instanceof Error ? cause.message : String(cause)} (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
-      },
-      ep,
-    )
-    throw new VerdictGenerationError('Opus API call failed during finishSession', { code: 'opus_error', sessionId, cause })
+    response = await opusCall()
+  } catch (firstErr) {
+    if (isRetryableOpusError(firstErr)) {
+      await new Promise(resolve => setTimeout(resolve, deps.opusRetryDelayMs ?? 3000))
+      try {
+        response = await opusCall()
+      } catch (retryErr) {
+        await appendEvent(
+          {
+            session_id: sessionId,
+            event: 'error',
+            ts: ts(deps),
+            stage: 'verdict',
+            message: `${retryErr instanceof Error ? retryErr.message : String(retryErr)} (stage=verdict, session=${sessionId}, turn=${turnsCompleted}, retried=true)`,
+          },
+          ep,
+        )
+        throw new VerdictGenerationError('Opus API call failed during finishSession (after 1 retry)', { code: 'opus_error', sessionId, cause: retryErr })
+      }
+    } else {
+      await appendEvent(
+        {
+          session_id: sessionId,
+          event: 'error',
+          ts: ts(deps),
+          stage: 'verdict',
+          message: `${firstErr instanceof Error ? firstErr.message : String(firstErr)} (stage=verdict, session=${sessionId}, turn=${turnsCompleted})`,
+        },
+        ep,
+      )
+      throw new VerdictGenerationError('Opus API call failed during finishSession', { code: 'opus_error', sessionId, cause: firstErr })
+    }
   }
 
   const toolBlock = response.content.find(

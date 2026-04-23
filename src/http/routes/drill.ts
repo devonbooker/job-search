@@ -31,8 +31,11 @@ const startBodySchema = z.object({
   project: z.string().optional().default(''),
 })
 
+// Min 15 chars allows "I don't know" (honest deflection is a valid weak answer)
+// but blocks "yes"/"no"/"AWS" spam that Sonnet might rate solid and trigger a
+// garbage-verdict early-termination at turn 6.
 const answerBodySchema = z.object({
-  text: z.string().min(1, 'Answer cannot be empty'),
+  text: z.string().trim().min(15, 'Please type at least 15 characters. Real interview answers need specifics — even "I don\'t know the details because X" is better than one word.'),
 })
 
 // ─── Deps ─────────────────────────────────────────────────────────────────────

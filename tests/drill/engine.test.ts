@@ -479,6 +479,110 @@ describe('finishSession - verdict validation', () => {
       .rejects.toBeInstanceOf(VerdictGenerationError)
   })
 
+  test('retries once on Opus 529 (overloaded) and succeeds on second attempt', async () => {
+    // Build an inline stub that throws a 529 on the first Opus (tool-using) call,
+    // returns a valid tool_use response on the second.
+    let opusCalls = 0
+    let sonnetCalls = 0
+    const anthropic = {
+      messages: {
+        create: async (params: { tools?: unknown[] }) => {
+          if (params.tools) {
+            opusCalls++
+            if (opusCalls === 1) {
+              const err = new Error('Overloaded') as Error & { status?: number }
+              err.status = 529
+              throw err
+            }
+            return { content: [{ type: 'tool_use', id: 'stub', name: 'submit_verdict', input: goodVerdict }] }
+          }
+          sonnetCalls++
+          return { content: [{ type: 'text', text: JSON.stringify(goodDrillTurn('Q1')) }] }
+        },
+      },
+    } as unknown as EngineDeps['anthropic']
+
+    const deps: EngineDeps = {
+      anthropic,
+      storageFilePath: jsonlPath,
+      now: () => fixedNow,
+      opusRetryDelayMs: 0, // skip the real 3s backoff in tests
+    }
+
+    const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
+    const verdict = await finishSession(sessionId, deps)
+
+    expect(opusCalls).toBe(2)        // first threw, second succeeded
+    expect(verdict.overall).toBe('Solid')
+  })
+
+  test('does NOT retry on Opus 4xx (no retry policy for client errors)', async () => {
+    let opusCalls = 0
+    const anthropic = {
+      messages: {
+        create: async (params: { tools?: unknown[] }) => {
+          if (params.tools) {
+            opusCalls++
+            const err = new Error('Bad request') as Error & { status?: number }
+            err.status = 400
+            throw err
+          }
+          return { content: [{ type: 'text', text: JSON.stringify(goodDrillTurn('Q1')) }] }
+        },
+      },
+    } as unknown as EngineDeps['anthropic']
+
+    const deps: EngineDeps = {
+      anthropic,
+      storageFilePath: jsonlPath,
+      now: () => fixedNow,
+      opusRetryDelayMs: 0,
+    }
+
+    const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
+
+    await expect(finishSession(sessionId, deps))
+      .rejects.toBeInstanceOf(VerdictGenerationError)
+
+    expect(opusCalls).toBe(1) // no retry on 4xx
+  })
+
+  test('retries once on 5xx then fails hard if second attempt also 5xx', async () => {
+    let opusCalls = 0
+    const anthropic = {
+      messages: {
+        create: async (params: { tools?: unknown[] }) => {
+          if (params.tools) {
+            opusCalls++
+            const err = new Error('Internal error') as Error & { status?: number }
+            err.status = 503
+            throw err
+          }
+          return { content: [{ type: 'text', text: JSON.stringify(goodDrillTurn('Q1')) }] }
+        },
+      },
+    } as unknown as EngineDeps['anthropic']
+
+    const deps: EngineDeps = {
+      anthropic,
+      storageFilePath: jsonlPath,
+      now: () => fixedNow,
+      opusRetryDelayMs: 0,
+    }
+
+    const { sessionId } = await startSession({ resume: RESUME, jobDescription: JD }, deps)
+
+    const thrown = await finishSession(sessionId, deps).catch(e => e)
+    expect(thrown).toBeInstanceOf(VerdictGenerationError)
+    expect(opusCalls).toBe(2) // retried once, both failed
+
+    const events = await getEvents(sessionId)
+    const err = events.find(e => e.event === 'error' && e.stage === 'verdict')
+    expect(err).toBeDefined()
+    if (err?.event !== 'error') throw new Error()
+    expect(err.message).toContain('retried=true')
+  })
+
   test('throws VerdictGenerationError when Opus returns text instead of tool_use, logs error', async () => {
     // String response on a tool-enabled call: stub emits a text block, not a
     // tool_use block. Engine must detect missing submit_verdict tool call.

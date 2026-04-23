@@ -255,6 +255,48 @@ describe('POST /drill/api/sessions/:id/answer', () => {
     expect(typeof body.completed).toBe('boolean')
   })
 
+  test('text under 15 chars: 400 with field=text (substance guard against single-word spam)', async () => {
+    const app = makeApp(testFile)
+
+    const startRes = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(startRes.status).toBe(200)
+    const { sessionId } = await startRes.json() as { sessionId: string }
+
+    const res = await app.request(`/drill/api/sessions/${sessionId}/answer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: 'yes' }),
+    })
+    expect(res.status).toBe(400)
+    const body = await res.json() as { error: string; field: string }
+    expect(body.field).toBe('text')
+    expect(body.error).toMatch(/15 characters/)
+  })
+
+  test('"I don\'t know" (15+ chars) is accepted as a valid weak answer', async () => {
+    // Honest deflection is a legitimate answer the drill must accept.
+    // Verifies the 15-char floor doesn't block genuine "I don't know" responses.
+    const app = makeApp(testFile)
+
+    const startRes = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    const { sessionId } = await startRes.json() as { sessionId: string }
+
+    const res = await app.request(`/drill/api/sessions/${sessionId}/answer`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text: "I don't know the answer" }),
+    })
+    expect(res.status).toBe(200)
+  })
+
   test('empty text: 400 with field=text', async () => {
     const app = makeApp(testFile)
 
@@ -339,7 +381,7 @@ describe('POST /drill/api/sessions/:id/answer - 409 on completed session', () =>
     const res = await app.request(`/drill/api/sessions/${sessionId}/answer`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: 'Too late.' }),
+      body: JSON.stringify({ text: 'Too late — session should already be complete.' }),
     })
     expect(res.status).toBe(409)
     const body = await res.json() as { error: string }
