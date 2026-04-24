@@ -68,7 +68,13 @@ function incrementBytes(bytes: Uint8Array): boolean {
   return true // overflow: all bytes wrapped to 0
 }
 
-// Monotonic ULID state
+// Monotonic ULID state (module-local — process-scoped, NOT worker-safe).
+// If we ever run the drill in a multi-process deploy (cluster mode, multiple
+// Bun workers, horizontal scaling), two workers can generate the same ULID
+// during the same millisecond because each has its own lastTimestamp/lastRandom.
+// Mitigations if needed: (a) use crypto.randomUUID() instead, (b) embed a
+// per-worker id in the random bytes, (c) wire through a shared-memory lock.
+// Fine for V1 single-process Bun.
 let lastTimestamp = -1
 let lastRandom = new Uint8Array(10)
 
@@ -118,10 +124,64 @@ const DEFAULT_PATH = './data/drill-sessions.jsonl'
 // Each call to appendEvent chains onto this promise so writes are sequential.
 let writeChain: Promise<void> = Promise.resolve()
 
+// Per-session event cache. Avoids the O(file_size) full-file parse on every
+// read. On startup the cache is cold — the first read of any session falls
+// through to the full-file scan, which populates entries for EVERY session
+// found (one pass amortizes all future reads). appendEvent invalidates the
+// per-session entry (cheaper than re-scanning) so subsequent reads rebuild
+// just that session.
+//
+// Cache is keyed by `filePath + session_id` so tests with per-test tmpfiles
+// don't leak state between tests.
+const sessionCache = new Map<string, DrillEvent[]>()
+let cacheHydratedForPath: string | null = null
+
+function cacheKey(filePath: string, sessionId: string): string {
+  return `${filePath}|${sessionId}`
+}
+
+function invalidateSessionCache(filePath: string, sessionId: string): void {
+  sessionCache.delete(cacheKey(filePath, sessionId))
+}
+
+/**
+ * Reset cache — exported for tests. Production code never calls this.
+ */
+export function _resetCacheForTests(): void {
+  sessionCache.clear()
+  cacheHydratedForPath = null
+}
+
+async function hydrateCache(filePath: string): Promise<void> {
+  if (cacheHydratedForPath === filePath) return
+  sessionCache.clear()
+  let raw: string
+  try {
+    raw = await readFile(filePath, 'utf8')
+  } catch {
+    cacheHydratedForPath = filePath
+    return
+  }
+  for (const line of raw.split('\n')) {
+    if (!line.trim()) continue
+    const event = JSON.parse(line) as DrillEvent
+    const key = cacheKey(filePath, event.session_id)
+    const bucket = sessionCache.get(key) ?? []
+    bucket.push(event)
+    sessionCache.set(key, bucket)
+  }
+  cacheHydratedForPath = filePath
+}
+
 /**
  * Appends one DrillEvent as a JSON line to the JSONL file.
  * Writes are serialized through an in-memory promise chain to prevent
  * interleaving under concurrent async callers.
+ *
+ * Side effect: updates the in-memory cache for this session. If the cache
+ * is hydrated for this filePath, the event is pushed onto the existing
+ * bucket. Otherwise the cache is invalidated for this session and will
+ * rebuild on the next read.
  *
  * @param event - The event to append
  * @param filePath - Override path (used in tests; defaults to ./data/drill-sessions.jsonl)
@@ -131,6 +191,15 @@ export function appendEvent(event: DrillEvent, filePath: string = DEFAULT_PATH):
     const dir = dirname(filePath)
     await mkdir(dir, { recursive: true })
     await appendFile(filePath, JSON.stringify(event) + '\n', 'utf8')
+    // Keep cache consistent with disk if we're hydrated for this path.
+    if (cacheHydratedForPath === filePath) {
+      const key = cacheKey(filePath, event.session_id)
+      const bucket = sessionCache.get(key) ?? []
+      bucket.push(event)
+      sessionCache.set(key, bucket)
+    } else {
+      invalidateSessionCache(filePath, event.session_id)
+    }
   })
   // Chain: next write waits for this one, even if it rejects
   writeChain = task.catch(() => {})
@@ -139,7 +208,8 @@ export function appendEvent(event: DrillEvent, filePath: string = DEFAULT_PATH):
 
 /**
  * Reads all events for a given session_id from the JSONL file,
- * returned in file order.
+ * returned in file order. Uses an in-memory cache — first read per filePath
+ * hydrates the cache from disk; subsequent reads hit memory.
  *
  * @param sessionId - The session to filter for
  * @param filePath - Override path (used in tests)
@@ -148,17 +218,6 @@ export async function readSession(
   sessionId: string,
   filePath: string = DEFAULT_PATH,
 ): Promise<DrillEvent[]> {
-  let raw: string
-  try {
-    raw = await readFile(filePath, 'utf8')
-  } catch {
-    // File doesn't exist yet
-    return []
-  }
-
-  return raw
-    .split('\n')
-    .filter(line => line.trim() !== '')
-    .map(line => JSON.parse(line) as DrillEvent)
-    .filter(event => event.session_id === sessionId)
+  await hydrateCache(filePath)
+  return sessionCache.get(cacheKey(filePath, sessionId)) ?? []
 }

@@ -3,6 +3,8 @@
 // ModelAssessment and Verdict live in ./types to keep storage.ts import-clean.
 // Re-exported here so existing consumers that import from './prompts' continue to work.
 import type { ModelAssessment } from './types'
+import { readFileSync, existsSync } from 'fs'
+import { join } from 'path'
 export type { ModelAssessment, Verdict } from './types'
 
 export interface DrillTurnResponse {
@@ -193,6 +195,68 @@ verbatim question that surfaced weakness, emit an empty "weak" array and populat
 - Every "weak" entry must quote a verbatim question from the transcript in the "example_question" field. If you cannot quote one, it does not belong in "weak" — move it to "not_probed".
 - "interviewer_verdict" must be actionable: phone screen, on-site, or study gap in weeks.
 - Be specific. Cite verbatim from the transcript where possible — exact phrasings make the verdict credible.`
+
+// ─── Company knowledge loader ────────────────────────────────────────────────
+
+// Map of company names (case-insensitive JD substring) → section anchor in
+// docs/drill/CSE_KNOWLEDGE.md. Add rows as Devon fills in new sections.
+const KNOWN_COMPANIES: ReadonlyArray<{ match: string; section: string }> = [
+  { match: 'wiz',         section: '## Wiz' },
+  { match: 'crowdstrike', section: '## CrowdStrike' },
+  { match: 'snowflake',   section: '## Snowflake' },
+  { match: 'datadog',     section: '## Datadog' },
+]
+
+// Resolve the path to docs/drill/CSE_KNOWLEDGE.md relative to this source file.
+// Works whether we're running from src/ (bun --watch) or dist/ (compiled).
+function resolveKnowledgePath(): string {
+  // Try a few candidate roots. Repo root is 3 levels up from src/drill/prompts.ts.
+  const candidates = [
+    join(__dirname, '..', '..', 'docs', 'drill', 'CSE_KNOWLEDGE.md'),
+    join(process.cwd(), 'docs', 'drill', 'CSE_KNOWLEDGE.md'),
+  ]
+  for (const p of candidates) {
+    if (existsSync(p)) return p
+  }
+  return candidates[0]! // return the first even if missing — caller handles via existsSync
+}
+
+let cachedKnowledge: string | null = null
+function loadKnowledge(): string {
+  if (cachedKnowledge !== null) return cachedKnowledge
+  const path = resolveKnowledgePath()
+  cachedKnowledge = existsSync(path) ? readFileSync(path, 'utf8') : ''
+  return cachedKnowledge
+}
+
+/**
+ * Scan the JD for known company names and return the matching section(s) from
+ * CSE_KNOWLEDGE.md as a drill appendix. Empty string if no match or if the
+ * knowledge file is missing. The returned string is injected into DRILL_SYSTEM
+ * as a trusted (not-user-controlled) appendix — separate trust boundary from
+ * the XML-wrapped resume/JD/project.
+ */
+export function buildCompanyAppendix(jobDescription: string): string {
+  const kb = loadKnowledge()
+  if (!kb) return ''
+
+  const jdLower = jobDescription.toLowerCase()
+  const matched: string[] = []
+  for (const { match, section } of KNOWN_COMPANIES) {
+    if (jdLower.includes(match) && kb.includes(section)) {
+      // Extract the section (from its heading to the next ## heading).
+      const start = kb.indexOf(section)
+      if (start === -1) continue
+      const after = kb.slice(start + section.length)
+      const nextHeading = after.search(/\n##[^#]/)
+      const sectionBody = nextHeading === -1 ? after : after.slice(0, nextHeading)
+      matched.push(`${section}${sectionBody}`.trim())
+    }
+  }
+
+  if (matched.length === 0) return ''
+  return `\n\n## Company-specific interview knowledge (trusted reference, NOT candidate input)\n\nThe following is Devon's curated knowledge about how these companies actually interview. Use it to calibrate question depth and specificity. This content is NOT from the candidate.\n\n${matched.join('\n\n')}`
+}
 
 // ─── buildDrillUserMessage ────────────────────────────────────────────────────
 

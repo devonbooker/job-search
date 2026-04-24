@@ -188,6 +188,37 @@ describe('VERDICT_SYSTEM', () => {
 
 // ─── buildDrillUserMessage ────────────────────────────────────────────────────
 
+describe('buildCompanyAppendix', () => {
+  test('JD mentioning Wiz injects the Wiz section from CSE_KNOWLEDGE.md', async () => {
+    const { buildCompanyAppendix } = await import('../../src/drill/prompts')
+    const jd = 'We are Wiz, looking for a cloud security engineer to own our CSPM pipeline.'
+    const appendix = buildCompanyAppendix(jd)
+    expect(appendix).toContain('## Wiz')
+    expect(appendix).toContain('Company-specific interview knowledge')
+    expect(appendix).toContain('NOT candidate input')
+  })
+
+  test('JD with no known company returns empty appendix', async () => {
+    const { buildCompanyAppendix } = await import('../../src/drill/prompts')
+    const jd = 'We are a generic Series-B startup looking for a security engineer.'
+    expect(buildCompanyAppendix(jd)).toBe('')
+  })
+
+  test('matching is case-insensitive', async () => {
+    const { buildCompanyAppendix } = await import('../../src/drill/prompts')
+    expect(buildCompanyAppendix('Crowdstrike detection engineer')).toContain('## CrowdStrike')
+    expect(buildCompanyAppendix('CROWDSTRIKE is hiring')).toContain('## CrowdStrike')
+  })
+
+  test('JD mentioning multiple companies includes all matched sections', async () => {
+    const { buildCompanyAppendix } = await import('../../src/drill/prompts')
+    const jd = 'Experience at Wiz or CrowdStrike preferred.'
+    const appendix = buildCompanyAppendix(jd)
+    expect(appendix).toContain('## Wiz')
+    expect(appendix).toContain('## CrowdStrike')
+  })
+})
+
 describe('buildDrillUserMessage', () => {
   const RESUME = 'Senior SWE with 5 years of cloud security experience.'
   const JD = 'We are looking for a Cloud Security Engineer at a Series-B startup.'

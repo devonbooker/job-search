@@ -113,26 +113,38 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
 
   // GET /drill/api/sessions/:id
   // Returns: SessionSnapshot (200) or { error: "session_not_found" } (404)
-  // Side effect: writes a reopen event before reading the session.
-  // The snapshot's transcript last entry includes the current unanswered question
-  // when status is in_progress (via getSession's natural transcript building).
+  //
+  // SECURITY NOTE: session URL currently doubles as the credential — anyone
+  // with /drill/<sessionId> can read the full resume + JD + transcript.
+  // Mitigation today: (1) ULIDs have 80 bits of random entropy, guessing is
+  // infeasible; (2) DRILL_START_TOKEN gates /start so random crawlers can't
+  // create new sessions; (3) noindex headers below prevent search-engine
+  // indexing of leaked URLs. Proper fix (post-Preston): separate read_token
+  // from session_id, store mapping in JSONL, rotate readable tokens on
+  // revocation.
   app.get('/drill/api/sessions/:id', async (c) => {
     const id = c.req.param('id')
     const userAgent = c.req.header('User-Agent') ?? ''
 
-    // Check existence first — do NOT call recordReopen for bogus IDs
     const snapshot = await getSession(id, deps)
 
-    // readSession returns [] for an unknown session_id → transcript will be empty
-    // and turnsCompleted will be 0 with no start event. Detect via empty transcript
-    // AND no verdict AND status in_progress (i.e. nothing was ever written).
-    if (snapshot.transcript.length === 0 && snapshot.turnsCompleted === 0 && !snapshot.verdict) {
+    // True not-found signal: zero events on disk for this session_id.
+    // A session with only start+error events (orphan: first Sonnet call failed)
+    // has exists=true, so reopen still returns 200 + the (empty) snapshot.
+    if (!snapshot.exists) {
       return c.json({ error: ERROR_CODE.SESSION_NOT_FOUND }, 404)
     }
 
-    // Session exists — record the reopen event
-    await recordReopen(id, userAgent, deps)
+    // Metric hygiene: only log reopen for in-progress sessions. Verdict-page
+    // refreshes are high-frequency but meaningless for the behavioral signal.
+    if (snapshot.status === 'in_progress') {
+      await recordReopen(id, userAgent, deps)
+    }
 
+    // Prevent search-engine indexing if a session URL ever leaks (Twitter paste,
+    // Slack share, etc.). Cache-Control: no-store avoids intermediary caching.
+    c.header('X-Robots-Tag', 'noindex, nofollow, noarchive')
+    c.header('Cache-Control', 'no-store, private')
     return c.json(snapshot, 200)
   })
 
@@ -183,8 +195,8 @@ export function mountDrillRoutes(app: Hono, deps: DrillRouteDeps): void {
     // Read session to check turn count and completion status
     const snapshot = await getSession(id, deps)
 
-    // If the session has no events at all, treat as not found
-    if (snapshot.transcript.length === 0 && snapshot.turnsCompleted === 0 && !snapshot.verdict) {
+    // True not-found signal: zero events on disk for this session_id.
+    if (!snapshot.exists) {
       return c.json({ error: ERROR_CODE.SESSION_NOT_FOUND }, 404)
     }
 

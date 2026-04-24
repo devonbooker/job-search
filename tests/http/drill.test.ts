@@ -291,6 +291,85 @@ describe('GET /drill/api/sessions/:id', () => {
     const body = await res.json() as { error: string }
     expect(body.error).toBe('session_not_found')
   })
+
+  test('orphan session (start+error events, no question): 200 not 404', async () => {
+    // Regression: pre-fix, a session whose first Sonnet call errored had events
+    // [start, error] but no question event → getSession built an empty transcript
+    // → 404. After fix: events.length > 0, so exists=true, so 200 with the
+    // snapshot (empty transcript is OK).
+    const flakyClient = {
+      messages: {
+        create: async () => {
+          throw new Error('Transient Sonnet failure')
+        },
+      },
+    }
+    const app = makeApp(testFile, flakyClient as unknown as { messages: { create: () => unknown } })
+
+    const startRes = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    expect(startRes.status).toBe(502) // the start failed loudly
+    // But the session_id was returned in the error body
+    const failBody = await startRes.json() as { sessionId?: string }
+    expect(typeof failBody.sessionId).toBe('string')
+    const sessionId = failBody.sessionId!
+
+    // Now reopen the orphan session — previously this returned 404 forever
+    const reopenRes = await app.request(`/drill/api/sessions/${sessionId}`)
+    expect(reopenRes.status).toBe(200)
+    const snap = await reopenRes.json() as { exists: boolean; transcript: unknown[] }
+    expect(snap.exists).toBe(true)
+    expect(Array.isArray(snap.transcript)).toBe(true)
+  })
+
+  test('reopen on completed session does NOT write reopen event (metric hygiene)', async () => {
+    // Verdict-page refreshes shouldn't inflate the "Preston came back" signal.
+    // Pre-fix: every GET on a completed session wrote a reopen event.
+    let callCount = 0
+    const client = {
+      messages: {
+        create: async () => {
+          callCount++
+          if (callCount <= 4) return { content: [{ type: 'text', text: SONNET_RESPONSE }] }
+          return verdictToolUse()
+        },
+      },
+    }
+    const app = makeApp(testFile, client as unknown as { messages: { create: () => unknown } })
+
+    // Run a full drill: start + 3 answers + finish
+    const startRes = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    const { sessionId } = await startRes.json() as { sessionId: string }
+    for (let i = 0; i < 3; i++) {
+      await app.request(`/drill/api/sessions/${sessionId}/answer`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: `Detailed answer number ${i + 1} with substance.` }),
+      })
+    }
+    await app.request(`/drill/api/sessions/${sessionId}/finish`, { method: 'POST' })
+
+    // Count reopen events before vs after refreshing the completed verdict
+    const { readFileSync } = await import('fs')
+    const beforeReopens = readFileSync(testFile, 'utf8')
+      .split('\n').filter(Boolean).filter(l => l.includes('"event":"reopen"')).length
+
+    await app.request(`/drill/api/sessions/${sessionId}`)
+    await app.request(`/drill/api/sessions/${sessionId}`)
+    await app.request(`/drill/api/sessions/${sessionId}`)
+
+    const afterReopens = readFileSync(testFile, 'utf8')
+      .split('\n').filter(Boolean).filter(l => l.includes('"event":"reopen"')).length
+
+    expect(afterReopens).toBe(beforeReopens) // no new reopens on completed session
+  })
 })
 
 // ─── POST /drill/api/sessions/:id/answer ──────────────────────────────────────

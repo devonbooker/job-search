@@ -10,12 +10,17 @@ import {
   DRILL_SYSTEM,
   VERDICT_SYSTEM,
   buildDrillUserMessage,
+  buildCompanyAppendix,
 } from './prompts'
 import type { DrillTurnResponse } from './prompts'
 import type { ModelAssessment, Verdict } from './types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+// Model aliases point to the current latest in each family. Anthropic may
+// retire aliases on notice (usually 6 months). If you see "model deprecated"
+// errors: bump these to a dated version like 'claude-sonnet-4-6-20260101'.
+// Don't forget to also update the tool-use tests if behavior shifts.
 const SONNET_MODEL = 'claude-sonnet-4-6'
 const OPUS_MODEL = 'claude-opus-4-7'
 const MAX_TURNS = 12
@@ -134,6 +139,12 @@ export interface SessionSnapshot {
   turnsCompleted: number
   transcript: Array<{ turn: number; question: string; answer?: string; assessment?: ModelAssessment }>
   verdict?: Verdict
+  // True iff at least one event exists for this session_id. False for unknown
+  // session IDs (the true "not found" signal). A session with only a start
+  // event + error event still has exists=true — the session exists, it just
+  // failed to produce a question. Routes use this to distinguish 404 from
+  // "session exists but errored".
+  exists: boolean
 }
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
@@ -278,7 +289,9 @@ export async function startSession(
     fp,
   )
 
-  // Build user message and call Sonnet for first question
+  // Build user message and call Sonnet for first question. The company
+  // appendix injects role-specific interview knowledge into the system prompt
+  // when the JD matches a company we have curated knowledge for.
   const userMessage = buildDrillUserMessage({
     resume,
     jobDescription,
@@ -286,10 +299,11 @@ export async function startSession(
     priorTranscript: [],
     project,
   })
+  const drillSystemPrompt = DRILL_SYSTEM + buildCompanyAppendix(jobDescription)
 
   let rawResponse: string
   try {
-    rawResponse = await callModel(deps.anthropic, SONNET_MODEL, DRILL_SYSTEM, userMessage, 1024)
+    rawResponse = await callModel(deps.anthropic, SONNET_MODEL, drillSystemPrompt, userMessage, 1024)
   } catch (cause) {
     await appendEvent(
       {
@@ -433,10 +447,11 @@ async function submitAnswerImpl(
     turn: currentTurn + 1,
     priorTranscript: fullTranscript,
   })
+  const drillSystemPrompt = DRILL_SYSTEM + buildCompanyAppendix(startEvent.job_description)
 
   let rawResponse: string
   try {
-    rawResponse = await callModel(deps.anthropic, SONNET_MODEL, DRILL_SYSTEM, userMessage, 1024)
+    rawResponse = await callModel(deps.anthropic, SONNET_MODEL, drillSystemPrompt, userMessage, 1024)
   } catch (cause) {
     await appendEvent(
       {
@@ -734,6 +749,7 @@ export async function getSession(
     status,
     turnsCompleted,
     transcript,
+    exists: events.length > 0,
   }
 
   if (finishEvent) {

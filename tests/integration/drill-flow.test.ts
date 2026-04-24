@@ -374,3 +374,84 @@ describe('Drill integration: verdict fallback on Opus failure', () => {
     expect(body.transcript.length).toBeGreaterThan(0)
   })
 })
+
+// ─── Refresh-mid-drill: user closes tab, reopens via URL, state is preserved ─
+
+describe('Drill integration: refresh mid-drill preserves state', () => {
+  let tmpDir: string
+  let storageFile: string
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'drill-refresh-'))
+    storageFile = join(tmpDir, 'sessions.jsonl')
+  })
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
+  test('GET /sessions/:id after N answers returns current unanswered question + prior Q/A pairs', async () => {
+    // Simulates Preston answering 2 questions, closing his tab, then reopening
+    // via /drill/<sessionId>. Expect: snapshot.status === 'in_progress',
+    // transcript has Q1 + A1 + Q2 + A2 + Q3 (unanswered), turnsCompleted === 2.
+    let callCount = 0
+    const qs = [
+      'Walk me through WAF configuration.',
+      'What rule groups did you enable?',
+      'How did you handle false positives?',
+    ]
+    const anthropic = {
+      messages: {
+        create: async () => {
+          const q = qs[callCount] ?? qs[qs.length - 1]
+          callCount++
+          return fakeMessage(drillTurnJson(q, 'solid'))
+        },
+      },
+    } as unknown as Anthropic
+
+    const { Hono } = await import('hono')
+    const { mountDrillRoutes } = await import('../../src/http/routes/drill')
+    const app = new Hono()
+    mountDrillRoutes(app, { anthropic, storageFilePath: storageFile })
+
+    const startRes = await app.request('/drill/api/start', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resume: RESUME, jobDescription: JD }),
+    })
+    const { sessionId } = await startRes.json() as { sessionId: string }
+
+    // Answer 2 turns
+    for (let i = 0; i < 2; i++) {
+      await app.request(`/drill/api/sessions/${sessionId}/answer`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: `Substantive answer ${i + 1} with real specifics.` }),
+      })
+    }
+
+    // "User closes tab, reopens" — simulate by fetching the snapshot
+    const snap = await app.request(`/drill/api/sessions/${sessionId}`)
+    expect(snap.status).toBe(200)
+    const body = await snap.json() as {
+      status: string
+      turnsCompleted: number
+      exists: boolean
+      transcript: Array<{ turn: number; question: string; answer?: string }>
+    }
+
+    expect(body.exists).toBe(true)
+    expect(body.status).toBe('in_progress')
+    expect(body.turnsCompleted).toBe(2)
+
+    // Transcript should have 3 entries: Q1 (answered), Q2 (answered), Q3 (unanswered)
+    expect(body.transcript).toHaveLength(3)
+    expect(body.transcript[0]?.answer).toBeTruthy()
+    expect(body.transcript[1]?.answer).toBeTruthy()
+    expect(body.transcript[2]?.answer).toBeUndefined()
+
+    // The last entry's question is what DrillPage will render as "current question"
+    expect(body.transcript[2]?.question).toBe(qs[2])
+  })
+})

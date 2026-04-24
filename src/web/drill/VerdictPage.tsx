@@ -55,17 +55,14 @@ export function VerdictPage({ verdict, transcript }: VerdictPageProps) {
         {verdict.interviewer_verdict}
       </div>
 
-      {/* Solid */}
+      {/* Solid — tool-use schema pins this as string[]; no defensive cast needed */}
       {verdict.solid.length > 0 && (
         <div style={{ marginBottom: 24 }}>
           <h3 style={{ color: '#4caf81', marginBottom: 8, fontSize: 14, textTransform: 'uppercase' }}>Solid</h3>
           <ul style={{ paddingLeft: 20, margin: 0 }}>
-            {verdict.solid.map((item, i) => {
-              const text = typeof item === 'string'
-                ? item
-                : `${(item as any).area ?? ''}${(item as any).evidence ? ' - ' + (item as any).evidence : (item as any).why ? ' - ' + (item as any).why : ''}`
-              return <li key={i} style={{ marginBottom: 6, fontSize: 14, lineHeight: 1.5 }}>{text}</li>
-            })}
+            {verdict.solid.map((item, i) => (
+              <li key={i} style={{ marginBottom: 6, fontSize: 14, lineHeight: 1.5 }}>{item}</li>
+            ))}
           </ul>
         </div>
       )}
